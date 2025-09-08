@@ -1,4 +1,4 @@
-# This code has been modified by @Looteredev
+# This code has been modified by @Lootere
 # Please do not remove this credit
 import asyncio
 import re
