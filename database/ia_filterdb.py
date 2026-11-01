@@ -21,6 +21,49 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def _clean_display_file_name(file_name):
+    """Clean common promotional prefixes for display without changing stored names."""
+    if not file_name:
+        return ""
+    text = str(file_name)
+    metadata = re.compile(
+        r"(?i)\b(?:s\d+\s*e\d+|season\s*\d+|episode\s*\d+|\d{3,4}p|4k|8k|"
+        r"hdr|hevc|x264|x265|hindi|english|tamil|telugu|malayalam|kannada|"
+        r"dual\s*audio|multi\s*audio|20\d{2})\b"
+    )
+    while True:
+        prefix = re.match(r"\s*[\[\(\{]([^\]\)\}]+)[\]\)\}]\s*[-_. ]*", text)
+        if not prefix or metadata.search(prefix.group(1)):
+            break
+        text = text[prefix.end():]
+    text = re.sub(r"^\s*@[\w.]+\s*[-_.:]*\s*", "", text)
+    text = re.sub(
+        r"(?i)^\s*[\w.-]*(?:team|group|channel|uploads?|releases?)\s*[-_.:]+\s*",
+        "",
+        text,
+    )
+    text = re.sub(r"[_\.+]+", " ", text)
+    text = re.sub(r"\s{2,}", " ", text).strip(" ._+-")
+    return text or str(file_name)
+
+
+def _season_sort_key(file_name):
+    """Sort season packs first, then episode numbers naturally."""
+    text = _clean_display_file_name(file_name).lower()
+    combined_episode = re.search(r"\bs0*(\d+)\s*e0*(\d+)\b", text)
+    season_match = re.search(r"\b(?:season|s)\s*0*(\d+)\b", text)
+    episode_match = re.search(r"\b(?:episode|ep|e)\s*0*(\d+)\b", text)
+    if combined_episode:
+        season = int(combined_episode.group(1))
+        episode = int(combined_episode.group(2))
+        is_season_pack = 1
+    else:
+        season = int(season_match.group(1)) if season_match else 9999
+        episode = int(episode_match.group(1)) if episode_match else 9999
+        is_season_pack = 0 if season_match and not episode_match else 1
+    return (is_season_pack, season, episode, text)
+
+
 client = AsyncIOMotorClient(DATABASE_URI)
 db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
@@ -123,18 +166,17 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
         next_offset = ''
 
     cursor = Media.find(filter)
-    # Sort by recent
+    # Keep pagination bounded, then sort the display results for season-first browsing.
     cursor.sort('$natural', -1)
-    # Slice files according to offset and max results
     cursor.skip(offset).limit(max_results)
-    # Get list of files
     files = await cursor.to_list(length=max_results)
     for file in files:
         for banned_word in banned_words:
-            # Case-insensitive replacement
             pattern = re.compile(re.escape(banned_word), re.IGNORECASE)
             file['file_name'] = pattern.sub('', file['file_name']).strip()
+        file['file_name'] = _clean_display_file_name(file.get('file_name'))
 
+    files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
     return files, next_offset, total_results
 
 async def get_all_files():
@@ -176,6 +218,9 @@ async def get_bad_files(query, file_type=None, filter=False):
     cursor.sort('$natural', -1)
     # Get list of files
     files = await cursor.to_list(length=total_results)
+    for file in files:
+        file['file_name'] = _clean_display_file_name(file.get('file_name'))
+    files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
 
     return files, total_results
 
@@ -192,6 +237,7 @@ async def get_file_details(query):
             for banned_word in banned_words:
                 pattern = re.compile(re.escape(banned_word), re.IGNORECASE)
                 modified_file_name = pattern.sub('', modified_file_name).strip()
+            modified_file_name = _clean_display_file_name(modified_file_name)
             if not modified_file_name:
                 modified_file_name = "DefaultFileName"
             setattr(file, 'file_name', modified_file_name)
