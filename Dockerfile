@@ -12,6 +12,6 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
-RUN chmod +x /start.sh
+RUN chmod +x ./start.sh
 
-CMD ["/bin/bash", "/start.sh"]
+CMD ["/bin/bash", "./start.sh"]
