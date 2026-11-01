@@ -1,12 +1,17 @@
-FROM python:3.10.8-slim-buster
+FROM python:3.10-slim
 
-RUN apt update && apt upgrade -y
-RUN apt install git -y
+WORKDIR /Lootere-Filter-Bot
+
+RUN apt-get update && apt-get install -y --no-install-recommends git bash \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt /requirements.txt
 
-RUN cd /
-RUN pip3 install -U pip && pip3 install -U -r requirements.txt
-RUN mkdir /Lootere-Filter-Bot
-WORKDIR /Lootere-Filter-Bot
-COPY start.sh /start.sh
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r /requirements.txt
+
+COPY . .
+
+RUN chmod +x /start.sh
+
 CMD ["/bin/bash", "/start.sh"]
