@@ -35,6 +35,66 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
 BUTTONS = {}
+RESULT_SORTS = {}
+
+
+def _append_year_sort_controls(buttons, user_id):
+    buttons.insert(2, [
+        InlineKeyboardButton("📅 Sᴀᴀʟ", callback_data=f"year#{user_id}"),
+        InlineKeyboardButton("↕ Sᴏʀᴛ", callback_data=f"sort#{user_id}")
+    ])
+
+
+def _build_search_keyboard(files, user_id, key, next_offset, total_results, settings):
+    buttons = []
+    if not settings.get("button", SINGLE_BUTTON):
+        buttons.extend([
+            [InlineKeyboardButton(
+                text=f"[{get_size(file.file_size)}] {file.file_name}",
+                callback_data=f"files#{file.file_id}"
+            )]
+            for file in files
+        ])
+
+    buttons.extend([
+        [InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")],
+        [
+            InlineKeyboardButton("Lᴀɴɢᴜᴀɢᴇ", callback_data=f"select_lang#{user_id}"),
+            InlineKeyboardButton("Qᴜᴀʟɪᴛʏ", callback_data=f"quality#{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📅 Sᴀᴀʟ", callback_data=f"year#{user_id}"),
+            InlineKeyboardButton("↕ Sᴏʀᴛ", callback_data=f"sort#{user_id}")
+        ],
+        [
+            InlineKeyboardButton("Sᴇᴀꜱᴏɴs", callback_data=f"seas#{user_id}"),
+            InlineKeyboardButton("Eᴘɪsᴏᴅᴇ", callback_data=f"epi#{user_id}")
+        ]
+    ])
+
+    if next_offset != "":
+        page_size = 10 if settings.get("max_btn", True) else int(MAX_B_TN)
+        buttons.append([
+            InlineKeyboardButton("1 / {}".format(math.ceil(total_results / page_size)), callback_data="pages"),
+            InlineKeyboardButton("Nᴇxᴛ ➪", callback_data=f"next_{user_id}_{key}_{next_offset}")
+        ])
+    else:
+        buttons.append([
+            InlineKeyboardButton("Nᴏ Mᴏʀᴇ Pᴀɢᴇs", callback_data="pages")
+        ])
+    return buttons
+
+
+async def _update_search_results_message(query, settings, files, search, total_results, buttons):
+    markup = InlineKeyboardMarkup(buttons)
+    if settings.get("button", SINGLE_BUTTON):
+        caption = await get_text(settings, "0.00", files, query, total_results, search)
+        if query.message.photo:
+            await query.message.edit_caption(caption=caption, reply_markup=markup)
+        else:
+            await query.message.edit_text(text=caption, reply_markup=markup)
+    else:
+        await query.edit_message_reply_markup(reply_markup=markup)
 
 
 
@@ -185,7 +245,10 @@ async def next_page(bot, query):
         except:
             offset = 0
         search = BUTTONS.get(key)
-        files, n_offset, total = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
+        files, n_offset, total = await get_search_results(
+            query.message.chat.id, search, offset=offset, filter=True,
+            sort_by=RESULT_SORTS.get(key, "season")
+        )
         try:
             n_offset = int(n_offset)
         except:
@@ -229,6 +292,7 @@ async def next_page(bot, query):
             btn.insert(0, [
                 InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
             ])
+        _append_year_sort_controls(btn, req)
         try:
             if settings['max_btn']:
                 if 0 < offset <= 10:
@@ -325,10 +389,15 @@ async def language_check(bot, query):
         movie = temp.KEYWORD.get(query.from_user.id)
         if language != "home":
             movie = f"{movie} {language}"
-        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
+        result_key = f"{query.message.chat.id}-{query.message.id}"
+        files, offset, total_results = await get_search_results(
+            query.message.chat.id, movie, offset=0, filter=True,
+            sort_by=RESULT_SORTS.get(result_key, "season")
+        )
         if files:
             settings = await get_settings(query.message.chat.id)
             key = f"{query.message.chat.id}-{query.message.id}"
+            BUTTONS[key] = movie
             temp.GETALL[key] = files
             temp.CHAT[query.from_user.id] = query.message.chat.id
             if not settings['button']:
@@ -364,6 +433,7 @@ async def language_check(bot, query):
                 btn.insert(0, [
                     InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
                 ])
+            _append_year_sort_controls(btn, userid)
     
             if offset != "":
                 BUTTONS[key] = movie
@@ -443,6 +513,109 @@ async def select_language(bot, query):
         pass
     await query.answer()
 
+@Client.on_callback_query(filters.regex(r"^year#"))
+async def year_filter(bot, query):
+    parts = query.data.split("#")
+    userid = int(parts[1])
+    if userid not in [query.from_user.id, 0]:
+        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+    if len(parts) == 2:
+        years = range(datetime.now().year, datetime.now().year - 15, -1)
+        buttons = []
+        year_row = []
+        for year in years:
+            year_row.append(InlineKeyboardButton(str(year), callback_data=f"year#{userid}#{year}"))
+            if len(year_row) == 3:
+                buttons.append(year_row)
+                year_row = []
+        if year_row:
+            buttons.append(year_row)
+        buttons.append([InlineKeyboardButton("Sᴀʙʜɪ Sᴀᴀʟ", callback_data=f"year#{userid}#home")])
+        try:
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+        except MessageNotModified:
+            pass
+        await query.answer()
+        return
+
+    if len(parts) != 3 or (parts[2] != "home" and not re.fullmatch(r"\d{4}", parts[2])):
+        return await query.answer("Sᴀᴀʟ sᴇʟᴇᴄᴛ ᴋᴀʀᴏ 😏", show_alert=True)
+
+    key = f"{query.message.chat.id}-{query.message.id}"
+    base_search = temp.KEYWORD.get(query.from_user.id)
+    if not base_search:
+        return await query.answer("Pᴇʜʟᴇ ᴍᴏᴠɪᴇ sᴇᴀʀᴄʜ ᴋᴀʀᴏ 😏", show_alert=True)
+    search = base_search if parts[2] == "home" else f"{base_search} {parts[2]}"
+    sort_by = RESULT_SORTS.get(key, "season")
+    files, next_offset, total_results = await get_search_results(
+        query.message.chat.id, search, offset=0, filter=True, sort_by=sort_by
+    )
+    if not files:
+        return await query.answer(f"{parts[2]} ᴋᴇ ʟɪʏᴇ ғɪʟᴇ ɴᴀʜɪ ᴍɪʟɪ 😏", show_alert=True)
+
+    settings = await get_settings(query.message.chat.id)
+    temp.GETALL[key] = files
+    temp.CHAT[query.from_user.id] = query.message.chat.id
+    BUTTONS[key] = search
+    RESULT_SORTS[key] = sort_by
+    buttons = _build_search_keyboard(files, userid, key, next_offset, total_results, settings)
+    try:
+        await _update_search_results_message(query, settings, files, search, total_results, buttons)
+    except MessageNotModified:
+        pass
+    await query.answer()
+
+@Client.on_callback_query(filters.regex(r"^sort#"))
+async def sort_search_results(bot, query):
+    parts = query.data.split("#")
+    userid = int(parts[1])
+    if userid not in [query.from_user.id, 0]:
+        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+    options = {
+        "season": "Sᴇᴀsᴏɴ / Eᴘɪsᴏᴅᴇ",
+        "recent": "Nᴀʏᴀ Pᴇʜʟᴇ",
+        "title": "Tɪᴛʟᴇ A–Z",
+        "size": "Bᴀᴅɪ Fɪʟᴇ Pᴇʜʟᴇ",
+    }
+    if len(parts) == 2:
+        buttons = [[
+            InlineKeyboardButton(label, callback_data=f"sort#{userid}#{sort_by}")
+        ] for sort_by, label in options.items()]
+        try:
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+        except MessageNotModified:
+            pass
+        await query.answer()
+        return
+
+    if len(parts) != 3 or parts[2] not in options:
+        return await query.answer("Sᴏʀᴛ ᴏᴘᴛɪᴏɴ ᴄʜᴜɴᴏ 😏", show_alert=True)
+
+    key = f"{query.message.chat.id}-{query.message.id}"
+    search = BUTTONS.get(key) or temp.KEYWORD.get(query.from_user.id)
+    if not search:
+        return await query.answer("Pᴇʜʟᴇ ᴍᴏᴠɪᴇ sᴇᴀʀᴄʜ ᴋᴀʀᴏ 😏", show_alert=True)
+    sort_by = parts[2]
+    files, next_offset, total_results = await get_search_results(
+        query.message.chat.id, search, offset=0, filter=True, sort_by=sort_by
+    )
+    if not files:
+        return await query.answer("Kᴏɪ ғɪʟᴇ ɴᴀʜɪ ᴍɪʟɪ 😏", show_alert=True)
+
+    settings = await get_settings(query.message.chat.id)
+    temp.GETALL[key] = files
+    temp.CHAT[query.from_user.id] = query.message.chat.id
+    BUTTONS[key] = search
+    RESULT_SORTS[key] = sort_by
+    buttons = _build_search_keyboard(files, userid, key, next_offset, total_results, settings)
+    try:
+        await _update_search_results_message(query, settings, files, search, total_results, buttons)
+    except MessageNotModified:
+        pass
+    await query.answer()
+
 @Client.on_callback_query(filters.regex(r"^lusifilms"))
 async def quality_check(bot, query):
     try:
@@ -455,10 +628,15 @@ async def quality_check(bot, query):
         movie = temp.KEYWORD.get(query.from_user.id)
         if quality != "home":
             movie = f"{movie} {quality}"
-        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
+        result_key = f"{query.message.chat.id}-{query.message.id}"
+        files, offset, total_results = await get_search_results(
+            query.message.chat.id, movie, offset=0, filter=True,
+            sort_by=RESULT_SORTS.get(result_key, "season")
+        )
         if files:
             settings = await get_settings(query.message.chat.id)
             key = f"{query.message.chat.id}-{query.message.id}"
+            BUTTONS[key] = movie
             temp.GETALL[key] = files
             temp.CHAT[query.from_user.id] = query.message.chat.id
             if not settings['button']:
@@ -494,6 +672,7 @@ async def quality_check(bot, query):
                 btn.insert(0, [
                     InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
                 ])
+            _append_year_sort_controls(btn, userid)
             if offset != "":
                 BUTTONS[key] = movie
                 req = userid
@@ -577,10 +756,15 @@ async def seasons_check(bot, query):
         movie = temp.KEYWORD.get(query.from_user.id)
         if seasons != "home":
             movie = f"{movie} {seasons}"
-        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
+        result_key = f"{query.message.chat.id}-{query.message.id}"
+        files, offset, total_results = await get_search_results(
+            query.message.chat.id, movie, offset=0, filter=True,
+            sort_by=RESULT_SORTS.get(result_key, "season")
+        )
         if files:
             settings = await get_settings(query.message.chat.id)
             key = f"{query.message.chat.id}-{query.message.id}"
+            BUTTONS[key] = movie
             temp.GETALL[key] = files
             temp.CHAT[query.from_user.id] = query.message.chat.id
             if not settings['button']:
@@ -616,6 +800,7 @@ async def seasons_check(bot, query):
                 btn.insert(0, [
                     InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
                 ])
+            _append_year_sort_controls(btn, userid)
             if offset != "":
                 BUTTONS[key] = movie
                 req = userid
@@ -706,10 +891,15 @@ async def episode_check(bot, query):
         movie = temp.KEYWORD.get(query.from_user.id)
         if episode != "home":
             movie = f"{movie} {episode}"
-        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
+        result_key = f"{query.message.chat.id}-{query.message.id}"
+        files, offset, total_results = await get_search_results(
+            query.message.chat.id, movie, offset=0, filter=True,
+            sort_by=RESULT_SORTS.get(result_key, "season")
+        )
         if files:
             settings = await get_settings(query.message.chat.id)
             key = f"{query.message.chat.id}-{query.message.id}"
+            BUTTONS[key] = movie
             temp.GETALL[key] = files
             temp.CHAT[query.from_user.id] = query.message.chat.id
             if not settings['button']:
@@ -745,6 +935,7 @@ async def episode_check(bot, query):
                 btn.insert(0, [
                     InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
                 ])
+            _append_year_sort_controls(btn, userid)
             if offset != "":
                 BUTTONS[key] = movie
                 req = userid
@@ -1861,6 +2052,7 @@ async def auto_filter(client, msg, spoll=False):
             btn.insert(0, [
                 InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}"), 
             ])
+        _append_year_sort_controls(btn, message.from_user.id)
     
         if offset != "":
             key = f"{message.chat.id}-{message.id}"

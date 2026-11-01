@@ -117,8 +117,16 @@ async def save_file(media):
 
 
 
-async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0, filter=False):
+async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0, filter=False, sort_by="season"):
     """For given query return (results, next_offset)"""
+    sort_fields = {
+        "season": ("$natural", -1),
+        "recent": ("$natural", -1),
+        "title": ("file_name", 1),
+        "size": ("file_size", -1),
+    }
+    if sort_by not in sort_fields:
+        raise ValueError(f"Unsupported search sort option: {sort_by}")
     banned_words = script.BLACKLIST
     if chat_id is not None:
         settings = await get_settings(int(chat_id))
@@ -166,8 +174,7 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
         next_offset = ''
 
     cursor = Media.find(filter)
-    # Keep pagination bounded, then sort the display results for season-first browsing.
-    cursor.sort('$natural', -1)
+    cursor.sort(*sort_fields[sort_by])
     cursor.skip(offset).limit(max_results)
     files = await cursor.to_list(length=max_results)
     for file in files:
@@ -176,7 +183,8 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
             file['file_name'] = pattern.sub('', file['file_name']).strip()
         file['file_name'] = _clean_display_file_name(file.get('file_name'))
 
-    files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
+    if sort_by == "season":
+        files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
     return files, next_offset, total_results
 
 async def get_all_files():
