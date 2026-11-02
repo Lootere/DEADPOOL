@@ -39,6 +39,54 @@ AUTO_DELETE_OPTIONS = (
     (1800, "30 mins"),
 )
 
+SEARCH_STRICTNESS_LEVELS = {
+    "strict": {"suggestion_score": 80, "auto_correct_score": 90},
+    "normal": {"suggestion_score": 65, "auto_correct_score": 78},
+    "relaxed": {"suggestion_score": 55, "auto_correct_score": 70},
+}
+WELCOME_MESSAGE_MAX_LENGTH = 3500
+WELCOME_MESSAGE_PLACEHOLDERS = {"user", "bot_username", "bot_name"}
+
+
+def is_valid_welcome_message(message):
+    if not isinstance(message, str) or not message.strip():
+        return False
+    if len(message) > WELCOME_MESSAGE_MAX_LENGTH:
+        return False
+    placeholders = re.findall(r"\{([^{}]+)\}", message)
+    return all(name in WELCOME_MESSAGE_PLACEHOLDERS for name in placeholders)
+
+
+async def get_start_message(user_mention, bot_username, bot_name):
+    template = await db.get_setting("WELCOME_MESSAGE", default=None)
+    if template is None:
+        return script.START_TXT.format(user_mention, bot_username, bot_name)
+    if not is_valid_welcome_message(template):
+        logger.warning("Ignoring invalid stored welcome message configuration")
+        return script.START_TXT.format(user_mention, bot_username, bot_name)
+    replacements = {
+        "{user}": str(user_mention),
+        "{bot_username}": html_escape(str(bot_username)),
+        "{bot_name}": html_escape(str(bot_name)),
+    }
+    for placeholder, value in replacements.items():
+        template = template.replace(placeholder, value)
+    return template
+
+
+async def get_search_strictness():
+    strictness = await db.get_setting("SEARCH_STRICTNESS", default="normal")
+    if not isinstance(strictness, str) or strictness.lower() not in SEARCH_STRICTNESS_LEVELS:
+        logger.warning("Ignoring invalid stored search strictness configuration")
+        return "normal"
+    return strictness.lower()
+
+
+async def get_search_fuzzy_thresholds():
+    strictness = await get_search_strictness()
+    thresholds = SEARCH_STRICTNESS_LEVELS[strictness]
+    return thresholds["suggestion_score"], thresholds["auto_correct_score"]
+
 
 def get_auto_delete_seconds(settings):
     seconds = settings.get("auto_delete_time")

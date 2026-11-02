@@ -27,7 +27,7 @@ from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from info import *
 from .pm_filter import auto_filter
-from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked, get_auto_delete_label, get_sponsor_button, is_valid_sponsor_button, get_premium_plans, format_premium_plans, is_valid_premium_plan
+from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked, get_auto_delete_label, get_sponsor_button, is_valid_sponsor_button, get_premium_plans, format_premium_plans, is_valid_premium_plan, get_start_message, is_valid_welcome_message, get_search_strictness, SEARCH_STRICTNESS_LEVELS
 from database.connections_mdb import active_connection
 import re
 import json
@@ -246,7 +246,7 @@ async def start(client, message):
             await m.delete()
             await message.reply_photo(
                 photo=random.choice(PICS),
-                caption=script.START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
+                caption=await get_start_message(message.from_user.mention, temp.U_NAME, temp.B_NAME),
                 reply_markup=reply_markup,
                 has_spoiler=True,
                 parse_mode=enums.ParseMode.HTML
@@ -274,7 +274,7 @@ async def start(client, message):
             await m.delete()
             await message.reply_photo(
                 photo=random.choice(PICS),
-                caption=script.START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
+                caption=await get_start_message(message.from_user.mention, temp.U_NAME, temp.B_NAME),
                 reply_markup=reply_markup,
                 has_spoiler=True,
                 parse_mode=enums.ParseMode.HTML
@@ -1279,6 +1279,91 @@ async def enable_sponsor_button(client, message):
     config["enabled"] = True
     await db.set_setting("SPONSOR_BUTTON", config)
     await message.reply_text("Sponsor button phir se ON hai jaan ❤️")
+
+
+@Client.on_message(filters.command("set_welcome"))
+async def set_welcome_message(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    if message.chat.type != enums.ChatType.PRIVATE:
+        return await message.reply_text("Jaan, welcome message PM mein update karo ❤️")
+    try:
+        _, template = message.text.split(maxsplit=1)
+    except ValueError:
+        return await message.reply_text(
+            "Format: /set_welcome message text\n"
+            "Placeholders: {user}, {bot_username}, {bot_name}"
+        )
+    if not is_valid_welcome_message(template):
+        return await message.reply_text(
+            "Jaan, message 1–3500 characters ka hona chahiye aur placeholders "
+            "{user}, {bot_username}, {bot_name} mein se hone chahiye ❤️"
+        )
+    await db.set_setting("WELCOME_MESSAGE", template)
+    await message.reply_text("Welcome message update ho gaya jaan ❤️")
+
+
+@Client.on_message(filters.command("show_welcome"))
+async def show_welcome_message(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    await message.reply_text(
+        await get_start_message(
+            message.from_user.mention if message.from_user else "",
+            temp.U_NAME,
+            temp.B_NAME,
+        ),
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command("reset_welcome"))
+async def reset_welcome_message(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    if message.chat.type != enums.ChatType.PRIVATE:
+        return await message.reply_text("Jaan, welcome message PM mein reset karo ❤️")
+    await db.set_setting("WELCOME_MESSAGE", None)
+    await message.reply_text("Default welcome message restore ho gaya jaan ❤️")
+
+
+@Client.on_message(filters.command("set_search_strictness"))
+async def set_search_strictness(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    if message.chat.type != enums.ChatType.PRIVATE:
+        return await message.reply_text("Jaan, search strictness PM mein update karo ❤️")
+    try:
+        _, strictness = message.text.split(maxsplit=1)
+    except ValueError:
+        strictness = ""
+    strictness = strictness.strip().lower()
+    if strictness not in SEARCH_STRICTNESS_LEVELS:
+        return await message.reply_text(
+            "Format: /set_search_strictness strict|normal|relaxed"
+        )
+    await db.set_setting("SEARCH_STRICTNESS", strictness)
+    thresholds = SEARCH_STRICTNESS_LEVELS[strictness]
+    await message.reply_text(
+        f"Search strictness <b>{strictness}</b> set ho gayi jaan ❤️\n"
+        f"Suggestion threshold: {thresholds['suggestion_score']}\n"
+        f"Auto-correct threshold: {thresholds['auto_correct_score']}",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command("search_strictness"))
+async def show_search_strictness(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    strictness = await get_search_strictness()
+    thresholds = SEARCH_STRICTNESS_LEVELS[strictness]
+    await message.reply_text(
+        f"Current search strictness: <b>{strictness}</b>\n"
+        f"Suggestion threshold: {thresholds['suggestion_score']}\n"
+        f"Auto-correct threshold: {thresholds['auto_correct_score']}",
+        parse_mode=enums.ParseMode.HTML,
+    )
 
 
 @Client.on_message(filters.command("set_premium_plan"))

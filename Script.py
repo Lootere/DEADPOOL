@@ -304,6 +304,11 @@ Money heist S0E01
 • /set_premium_plan <id> | <name> | <price> | <duration> | <benefits> - add/update a plan
 • /remove_premium_plan <id> - remove a plan
 • /list_premium_plans - list current plans
+• /set_welcome message text - edit the start welcome message
+• /show_welcome - preview the current welcome message
+• /reset_welcome - restore the default welcome message
+• /set_search_strictness strict|normal|relaxed - tune fuzzy suggestions
+• /search_strictness - show current fuzzy-search strictness
 • /sponsor_button - view sponsor button status
 • /set_sponsor_button <text> | <url> - configure and enable sponsor button
 • /disable_sponsor_button - disable sponsor button

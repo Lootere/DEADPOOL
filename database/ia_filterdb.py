@@ -304,7 +304,7 @@ def _suggestion_similarity(query, title):
     )
 
 
-async def get_search_suggestions(query, limit=8, candidate_limit=500):
+async def get_search_suggestions(query, limit=8, candidate_limit=500, min_score=65):
     """Return bounded, fuzzy-ranked title suggestions from indexed filenames."""
     normalized_query = _normalized_suggestion_text(query)
     first_token = normalized_query.split(" ")[0] if normalized_query else ""
@@ -350,7 +350,11 @@ async def get_search_suggestions(query, limit=8, candidate_limit=500):
                 titles[normalized_title] = {"title": title, "score": score}
 
         ranked_titles = sorted(
-            (suggestion for suggestion in titles.values() if suggestion["score"] >= 65),
+            (
+                suggestion
+                for suggestion in titles.values()
+                if suggestion["score"] >= min_score
+            ),
             key=lambda suggestion: suggestion["score"],
             reverse=True,
         )[:limit]

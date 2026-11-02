@@ -22,7 +22,7 @@ from info import *
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
-from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, get_flirty_interaction_message, is_resolution_locked, get_auto_delete_seconds, get_auto_delete_label, AUTO_DELETE_OPTIONS, get_sponsor_button, get_premium_plans, format_premium_plans
+from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, get_flirty_interaction_message, is_resolution_locked, get_auto_delete_seconds, get_auto_delete_label, AUTO_DELETE_OPTIONS, get_sponsor_button, get_premium_plans, format_premium_plans, get_start_message, get_search_fuzzy_thresholds
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files, get_search_suggestions
@@ -1781,7 +1781,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             InputMediaPhoto(random.choice(PICS), has_spoiler=True)
         )
         await query.message.edit_text(
-            text=script.START_TXT.format(query.from_user.mention, temp.U_NAME, temp.B_NAME),
+            text=await get_start_message(query.from_user.mention, temp.U_NAME, temp.B_NAME),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML
         )
@@ -2292,10 +2292,16 @@ async def auto_filter(
                     pending_message = None
                     if settings.get("spell_check", SPELL_CHECK_REPLY):
                         stage = "searching indexed title suggestions"
-                        fuzzy_suggestions = await get_search_suggestions(search)
+                        suggestion_score, auto_correct_score = (
+                            await get_search_fuzzy_thresholds()
+                        )
+                        fuzzy_suggestions = await get_search_suggestions(
+                            search,
+                            min_score=suggestion_score,
+                        )
                         if fuzzy_suggestions:
                             best_match = fuzzy_suggestions[0]
-                            if best_match["score"] >= 78:
+                            if best_match["score"] >= auto_correct_score:
                                 corrected_files, corrected_offset, corrected_total = (
                                     await get_search_results(
                                         message.chat.id,
