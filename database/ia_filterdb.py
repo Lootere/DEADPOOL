@@ -94,6 +94,97 @@ def _search_term_pattern(term):
     return re.escape(term)
 
 
+def _filter_term_pattern(filter_name, value):
+    value = str(value).strip().lower()
+    token_start = r"(?:^|[\s._+\-])"
+    token_end = r"(?=$|[\s._+\-])"
+    if filter_name == "language":
+        language_aliases = {
+            "eng": ("eng", "english"),
+            "hin": ("hin", "hindi"),
+            "tam": ("tam", "tamil"),
+            "tel": ("tel", "telugu"),
+            "kan": ("kan", "kannada"),
+            "mal": ("mal", "malayalam"),
+            "guj": ("guj", "gujarati"),
+            "mar": ("mar", "marathi"),
+            "pun": ("pun", "punjabi"),
+            "multi": ("multi audio", "multiaudio"),
+            "dual": ("dual audio", "dualaudio"),
+        }
+        aliases = language_aliases.get(value, (value,))
+        alternatives = "|".join(
+            re.escape(alias).replace(r"\ ", r"[\s._+\-]*")
+            for alias in aliases
+        )
+        return token_start + r"(?:" + alternatives + r")" + token_end
+
+    if filter_name == "quality":
+        quality_patterns = {
+            "480p": r"480\s*p",
+            "720p": r"720\s*p",
+            "1080p": r"1080\s*p",
+            "1080p hq": r"1080\s*p[\s._+\-]*hq",
+            "1440p": r"1440\s*p",
+            "2160p": r"(?:2160\s*p|4\s*k|uhd)",
+            "4k": r"(?:2160\s*p|4\s*k|uhd)",
+        }
+        pattern = quality_patterns.get(value, re.escape(value))
+        return token_start + r"(?:" + pattern + r")" + token_end
+
+    if filter_name == "season":
+        season = re.fullmatch(r"s0*(\d+)", value)
+        if season:
+            number = int(season.group(1))
+            return token_start + rf"(?:s0*{number}(?=[\s._+\-]*e)|season[\s._+\-]*0*{number})"
+
+    if filter_name == "episode":
+        return token_start + _search_term_pattern(value) + token_end
+
+    if filter_name == "year" and re.fullmatch(r"\d{4}", value):
+        return token_start + re.escape(value) + token_end
+
+    raise ValueError(f"Unsupported search filter: {filter_name}")
+
+
+def _build_search_filter(query, file_type=None, filters=None):
+    terms = query.split()
+    if len(terms) == 1:
+        raw_pattern = (
+            r"(^|[\s\.\+\-_])"
+            + _search_term_pattern(terms[0])
+            + r"($|[\s\.\+\-_])"
+        )
+    else:
+        raw_pattern = r"[\s\.\+\-_]+".join(
+            _search_term_pattern(term) for term in terms
+        )
+    search_fields = ["file_name", "caption"] if USE_CAPTION_FILTER else ["file_name"]
+
+    def searchable_pattern(pattern):
+        if len(search_fields) == 1:
+            return {search_fields[0]: pattern}
+        return {"$or": [{field: pattern} for field in search_fields]}
+
+    query_conditions = [
+        searchable_pattern(re.compile(raw_pattern, flags=re.IGNORECASE))
+    ]
+    for filter_name, value in (filters or {}).items():
+        pattern = re.compile(
+            _filter_term_pattern(filter_name, value), flags=re.IGNORECASE
+        )
+        query_conditions.append(searchable_pattern(pattern))
+
+    mongo_filter = (
+        {"$and": query_conditions}
+        if len(query_conditions) > 1
+        else query_conditions[0]
+    )
+    if file_type:
+        mongo_filter["file_type"] = file_type
+    return mongo_filter
+
+
 client = AsyncIOMotorClient(DATABASE_URI)
 db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
@@ -147,7 +238,16 @@ async def save_file(media):
 
 
 
-async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0, filter=False, sort_by="season"):
+async def get_search_results(
+    chat_id,
+    query,
+    file_type=None,
+    max_results=10,
+    offset=0,
+    filter=False,
+    sort_by="season",
+    filters=None,
+):
     """For given query return (results, next_offset)"""
     sort_fields = {
         "season": ("$natural", -1),
@@ -193,27 +293,14 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
                     max_results = int(MAX_B_TN)
 
         operation = "building database query"
-        terms = query.split()
-        if len(terms) == 1:
-            raw_pattern = (
-                r'(^|[\s\.\+\-_])'
-                + _search_term_pattern(terms[0])
-                + r'($|[\s\.\+\-_])'
-            )
-        else:
-            raw_pattern = r'[\s\.\+\-_]+'.join(
-                _search_term_pattern(term) for term in terms
-            )
-        regex = re.compile(raw_pattern, flags=re.IGNORECASE)
+        mongo_filter = _build_search_filter(query, file_type, filters)
 
-        if USE_CAPTION_FILTER:
-            mongo_filter = {'$or': [{'file_name': regex}, {'caption': regex}]}
-        else:
-            mongo_filter = {'file_name': regex}
-
-        if file_type:
-            mongo_filter['file_type'] = file_type
-
+        logger.info(
+            "Media search filters prepared (collection=%s, query=%r, filters=%s)",
+            COLLECTION_NAME,
+            query,
+            filters or {},
+        )
         operation = "counting matching documents"
         total_results = await Media.count_documents(mongo_filter)
         logger.info(

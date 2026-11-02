@@ -36,6 +36,13 @@ logger.setLevel(logging.ERROR)
 
 BUTTONS = {}
 RESULT_SORTS = {}
+SEARCH_FILTERS = {}
+
+
+def _get_search_filter_context(query):
+    key = f"{query.message.chat.id}-{query.message.id}"
+    base_search = BUTTONS.get(key) or temp.KEYWORD.get(query.from_user.id)
+    return key, base_search, dict(SEARCH_FILTERS.get(key, {}))
 
 
 def _append_year_sort_controls(buttons, user_id):
@@ -286,7 +293,8 @@ async def next_page(bot, query):
         search = BUTTONS.get(key)
         files, n_offset, total = await get_search_results(
             query.message.chat.id, search, offset=offset, filter=True,
-            sort_by=RESULT_SORTS.get(key, "season")
+            sort_by=RESULT_SORTS.get(key, "season"),
+            filters=SEARCH_FILTERS.get(key, {}),
         )
         try:
             n_offset = int(n_offset)
@@ -425,13 +433,18 @@ async def language_check(bot, query):
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if language == "unknown":
             return await query.answer()
-        movie = temp.KEYWORD.get(query.from_user.id)
-        if language != "home":
-            movie = f"{movie} {language}"
-        result_key = f"{query.message.chat.id}-{query.message.id}"
+        result_key, movie, search_filters = _get_search_filter_context(query)
+        if not movie:
+            return await query.answer("Pehle movie search karo jaan 😘", show_alert=True)
+        if language == "home":
+            search_filters.pop("language", None)
+        else:
+            search_filters["language"] = language
+        SEARCH_FILTERS[result_key] = search_filters
         files, offset, total_results = await get_search_results(
             query.message.chat.id, movie, offset=0, filter=True,
-            sort_by=RESULT_SORTS.get(result_key, "season")
+            sort_by=RESULT_SORTS.get(result_key, "season"),
+            filters=search_filters,
         )
         if files:
             settings = await get_settings(query.message.chat.id)
@@ -583,14 +596,18 @@ async def year_filter(bot, query):
     if len(parts) != 3 or (parts[2] != "home" and not re.fullmatch(r"\d{4}", parts[2])):
         return await query.answer("Sᴀᴀʟ sᴇʟᴇᴄᴛ ᴋᴀʀᴏ 😏", show_alert=True)
 
-    key = f"{query.message.chat.id}-{query.message.id}"
-    base_search = temp.KEYWORD.get(query.from_user.id)
+    key, base_search, search_filters = _get_search_filter_context(query)
     if not base_search:
         return await query.answer("Pᴇʜʟᴇ ᴍᴏᴠɪᴇ sᴇᴀʀᴄʜ ᴋᴀʀᴏ 😏", show_alert=True)
-    search = base_search if parts[2] == "home" else f"{base_search} {parts[2]}"
+    if parts[2] == "home":
+        search_filters.pop("year", None)
+    else:
+        search_filters["year"] = parts[2]
+    SEARCH_FILTERS[key] = search_filters
     sort_by = RESULT_SORTS.get(key, "season")
     files, next_offset, total_results = await get_search_results(
-        query.message.chat.id, search, offset=0, filter=True, sort_by=sort_by
+        query.message.chat.id, base_search, offset=0, filter=True,
+        sort_by=sort_by, filters=search_filters
     )
     if not files:
         return await query.answer(f"{parts[2]} ᴋᴇ ʟɪʏᴇ ғɪʟᴇ ɴᴀʜɪ ᴍɪʟɪ 😏", show_alert=True)
@@ -598,11 +615,11 @@ async def year_filter(bot, query):
     settings = await get_settings(query.message.chat.id)
     temp.GETALL[key] = files
     temp.CHAT[query.from_user.id] = query.message.chat.id
-    BUTTONS[key] = search
+    BUTTONS[key] = base_search
     RESULT_SORTS[key] = sort_by
     buttons = _build_search_keyboard(files, userid, key, next_offset, total_results, settings)
     try:
-        await _update_search_results_message(query, settings, files, search, total_results, buttons)
+        await _update_search_results_message(query, settings, files, base_search, total_results, buttons)
     except MessageNotModified:
         pass
     await query.answer()
@@ -640,7 +657,8 @@ async def sort_search_results(bot, query):
         return await query.answer("Pᴇʜʟᴇ ᴍᴏᴠɪᴇ sᴇᴀʀᴄʜ ᴋᴀʀᴏ 😏", show_alert=True)
     sort_by = parts[2]
     files, next_offset, total_results = await get_search_results(
-        query.message.chat.id, search, offset=0, filter=True, sort_by=sort_by
+        query.message.chat.id, search, offset=0, filter=True, sort_by=sort_by,
+        filters=SEARCH_FILTERS.get(key, {}),
     )
     if not files:
         return await query.answer("Kᴏɪ ғɪʟᴇ ɴᴀʜɪ ᴍɪʟɪ 😏", show_alert=True)
@@ -671,13 +689,18 @@ async def quality_check(bot, query):
                 text=_get_resolution_lock_message(query.from_user.id, quality),
                 show_alert=True,
             )
-        movie = temp.KEYWORD.get(query.from_user.id)
-        if quality != "home":
-            movie = f"{movie} {quality}"
-        result_key = f"{query.message.chat.id}-{query.message.id}"
+        result_key, movie, search_filters = _get_search_filter_context(query)
+        if not movie:
+            return await query.answer("Pehle movie search karo jaan 😘", show_alert=True)
+        if quality == "home":
+            search_filters.pop("quality", None)
+        else:
+            search_filters["quality"] = quality
+        SEARCH_FILTERS[result_key] = search_filters
         files, offset, total_results = await get_search_results(
             query.message.chat.id, movie, offset=0, filter=True,
-            sort_by=RESULT_SORTS.get(result_key, "season")
+            sort_by=RESULT_SORTS.get(result_key, "season"),
+            filters=search_filters,
         )
         if files:
             settings = await get_settings(query.message.chat.id)
@@ -806,13 +829,18 @@ async def seasons_check(bot, query):
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if seasons == "unknown":
             return await query.answer()
-        movie = temp.KEYWORD.get(query.from_user.id)
-        if seasons != "home":
-            movie = f"{movie} {seasons}"
-        result_key = f"{query.message.chat.id}-{query.message.id}"
+        result_key, movie, search_filters = _get_search_filter_context(query)
+        if not movie:
+            return await query.answer("Pehle movie search karo jaan 😘", show_alert=True)
+        if seasons == "home":
+            search_filters.pop("season", None)
+        else:
+            search_filters["season"] = seasons
+        SEARCH_FILTERS[result_key] = search_filters
         files, offset, total_results = await get_search_results(
             query.message.chat.id, movie, offset=0, filter=True,
-            sort_by=RESULT_SORTS.get(result_key, "season")
+            sort_by=RESULT_SORTS.get(result_key, "season"),
+            filters=search_filters,
         )
         if files:
             settings = await get_settings(query.message.chat.id)
@@ -943,13 +971,18 @@ async def episode_check(bot, query):
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if episode == "unknown":
             return await query.answer()
-        movie = temp.KEYWORD.get(query.from_user.id)
-        if episode != "home":
-            movie = f"{movie} {episode}"
-        result_key = f"{query.message.chat.id}-{query.message.id}"
+        result_key, movie, search_filters = _get_search_filter_context(query)
+        if not movie:
+            return await query.answer("Pehle movie search karo jaan 😘", show_alert=True)
+        if episode == "home":
+            search_filters.pop("episode", None)
+        else:
+            search_filters["episode"] = episode
+        SEARCH_FILTERS[result_key] = search_filters
         files, offset, total_results = await get_search_results(
             query.message.chat.id, movie, offset=0, filter=True,
-            sort_by=RESULT_SORTS.get(result_key, "season")
+            sort_by=RESULT_SORTS.get(result_key, "season"),
+            filters=search_filters,
         )
         if files:
             settings = await get_settings(query.message.chat.id)
@@ -2090,6 +2123,9 @@ async def auto_filter(client, msg, spoll=False):
         pending_message = m
         stage = "building search results"
         key = f"{message.chat.id}-{message.id}"
+        BUTTONS[key] = search
+        SEARCH_FILTERS[key] = {}
+        RESULT_SORTS[key] = "season"
         temp.GETALL[key] = files
         temp.CHAT[message.from_user.id] = message.chat.id
         temp.KEYWORD[message.from_user.id] = search
