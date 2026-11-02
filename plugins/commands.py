@@ -14,7 +14,7 @@ from Script import script
 from datetime import datetime, timedelta, date, time
 from pyrogram import Client, filters, enums
 from pyrogram.errors import ChatAdminRequired, FloodWait
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
 from database.ia_filterdb import (
     Media,
     clear_search_results_cache,
@@ -36,6 +36,14 @@ from Lootere.utils.smart_search_engine import (
     get_smart_style_config,
     select_smart_text_style,
     set_style_preview_enabled,
+)
+from Lootere.utils.duplicate_cleaner import (
+    cancel_duplicate_cleanup,
+    execute_duplicate_cleanup,
+    format_duplicate_preview_text,
+    get_duplicate_mode,
+    scan_duplicates_preview,
+    set_duplicate_mode,
 )
 import re
 import json
@@ -2419,3 +2427,101 @@ async def smart_style_callback_handler(client, query):
             disable_web_page_preview=True,
         )
         return await query.answer("Preview cancelled. Previous style kept unchanged.")
+
+
+def _build_duplicate_cleaner_keyboard(session_id: str, mode: str, total_duplicates: int) -> InlineKeyboardMarkup:
+    mode_text = f"Mode: {mode.title()}"
+    if total_duplicates > 0:
+        buttons = [
+            [InlineKeyboardButton("Clean Duplicates", callback_data=f"dupclean#confirm#{session_id}")],
+            [
+                InlineKeyboardButton(mode_text, callback_data=f"dupclean#toggle#{session_id}"),
+                InlineKeyboardButton("Cancel", callback_data=f"dupclean#cancel#{session_id}"),
+            ],
+        ]
+    else:
+        buttons = [
+            [
+                InlineKeyboardButton(mode_text, callback_data="dupclean#toggle#none"),
+                InlineKeyboardButton("Close", callback_data="dupclean#close#none"),
+            ]
+        ]
+    return InlineKeyboardMarkup(buttons)
+
+
+@Client.on_message(filters.command(["dupscan", "duplicates", "dupclean"]) & filters.private)
+async def dupscan_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+
+    query = None
+    if len(message.command) > 1:
+        query = message.text.split(None, 1)[1].strip()
+
+    status_msg = await message.reply_text("<b>🔍 Scanning database for duplicate files... Please wait.</b>")
+    mode = await get_duplicate_mode(db_instance=db)
+    preview = await scan_duplicates_preview(db_instance=db, query=query)
+    text = format_duplicate_preview_text(preview, mode)
+    kb = _build_duplicate_cleaner_keyboard(preview["session_id"], mode, preview["total_duplicates"])
+    await status_msg.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+
+
+@Client.on_callback_query(filters.regex(r"^dupclean#"))
+async def duplicate_cleaner_callback(client: Client, query: CallbackQuery):
+    actor_id = query.from_user.id
+    if not _is_bot_admin(actor_id):
+        return await query.answer("This setting can only be modified by Bot Admins.", show_alert=True)
+
+    data = query.data or ""
+    parts = data.split("#")
+    action = parts[1] if len(parts) > 1 else ""
+    session_id = parts[2] if len(parts) > 2 else ""
+
+    if action == "close":
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.answer("Closed.")
+
+    if action == "cancel":
+        cancel_duplicate_cleanup(session_id)
+        await query.message.edit_text(
+            "<b>❌ Duplicate cleanup cancelled.</b>\n<i>No files were deleted from the database.</i>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return await query.answer("Duplicate cleanup cancelled.")
+
+    if action == "confirm":
+        await query.answer("Cleaning duplicates... please wait.", show_alert=False)
+        res = await execute_duplicate_cleanup(session_id, admin_id=actor_id, db_instance=db)
+        if res.get("status") == "error":
+            return await query.message.edit_text(
+                f"<b>⚠️ Duplicate Cleanup Error:</b>\n{res.get('message', 'Unknown error')}",
+                parse_mode=enums.ParseMode.HTML,
+            )
+        deleted = res.get("deleted_count", 0)
+        reclaimed_gb = res.get("reclaimed_gb", "0.00GB")
+        await query.message.edit_text(
+            f"<b>✅ Duplicate Cleanup Completed!</b>\n\n"
+            f"• <b>Files Deleted:</b> <code>{deleted}</code> duplicate records\n"
+            f"• <b>Space Reclaimed:</b> <code>{reclaimed_gb}</code>\n\n"
+            f"<i>All canonical winner files remain safe and indexed in the database.</i>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return
+
+    if action == "toggle":
+        curr_mode = await get_duplicate_mode(db_instance=db)
+        next_mode = {
+            "preview": "auto_exact",
+            "auto_exact": "off",
+            "off": "preview",
+        }.get(curr_mode, "preview")
+        await set_duplicate_mode(next_mode, db_instance=db)
+
+        preview = await scan_duplicates_preview(db_instance=db)
+        text = format_duplicate_preview_text(preview, next_mode)
+        kb = _build_duplicate_cleaner_keyboard(preview["session_id"], next_mode, preview["total_duplicates"])
+        await query.message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+        return await query.answer(f"Duplicate mode set to: {next_mode.title()}")

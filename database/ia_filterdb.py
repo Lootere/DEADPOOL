@@ -481,6 +481,16 @@ async def save_file(media):
     # TODO: Find better way to get same file_id for same media to avoid duplicates
     file_id, file_ref = unpack_new_file_id(media.file_id)
     file_name = re.sub(r"(_|\-|\.|\+)", " ", str(media.file_name))
+
+    try:
+        from Lootere.utils.duplicate_cleaner import should_auto_skip_exact_duplicate
+        should_skip, existing_id = await should_auto_skip_exact_duplicate(file_name, media.file_size)
+        if should_skip:
+            logger.info(f'{getattr(media, "file_name", "NO_FILE")} is already saved in database')
+            return False, existing_id
+    except Exception:
+        pass
+
     try:
         file = Media(
             file_id=file_id,
