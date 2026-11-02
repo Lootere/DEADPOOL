@@ -33,7 +33,11 @@ TIMEZONE = "Asia/Kolkata"
 import logging
 from urllib.parse import quote_plus
 from Lootere.utils.file_properties import get_name, get_hash, get_media_file_size
-from Lootere.utils.search_ui_style import apply_search_keyboard_style
+from Lootere.utils.search_ui_style import (
+    apply_search_keyboard_style,
+    edit_styled_reply_markup,
+    sync_bot_api_reply_markup,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -225,11 +229,15 @@ async def choose_playlist_to_save_search(bot, query):
             ]
             for playlist in playlists
         ]
-        await bot.send_message(
+        styled_playlist_buttons = apply_search_keyboard_style(buttons)
+        sent_pl = await bot.send_message(
             chat_id=query.message.chat.id,
             text="Kis playlist mein save karun jaan? 💜",
-            reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(buttons)),
+            reply_markup=InlineKeyboardMarkup(styled_playlist_buttons),
             reply_to_message_id=query.message.id,
+        )
+        await sync_bot_api_reply_markup(
+            query.message.chat.id, getattr(sent_pl, "id", None), styled_playlist_buttons
         )
         await query.answer()
     except Exception:
@@ -274,7 +282,8 @@ async def add_search_to_playlist(bot, query):
 async def _update_search_results_message(
     query, settings, files, search, total_results, buttons, caption=None
 ):
-    markup = InlineKeyboardMarkup(apply_search_keyboard_style(buttons))
+    styled_buttons = apply_search_keyboard_style(buttons)
+    markup = InlineKeyboardMarkup(styled_buttons)
     if settings.get("button", SINGLE_BUTTON):
         if caption is None:
             caption = await get_text(settings, "0.00", files, query, total_results, search)
@@ -282,8 +291,11 @@ async def _update_search_results_message(
             await query.message.edit_caption(caption=caption, reply_markup=markup)
         else:
             await query.message.edit_text(text=caption, reply_markup=markup)
+        await sync_bot_api_reply_markup(
+            query.message.chat.id, query.message.id, styled_buttons
+        )
     else:
-        await query.edit_message_reply_markup(reply_markup=markup)
+        await edit_styled_reply_markup(query, styled_buttons)
 
 
 async def _update_no_search_results_message(query):
@@ -605,11 +617,12 @@ async def next_page(bot, query):
             cap = await get_text(settings, remaining_seconds, files, query, total, search)
             try:
                 await query.message.edit_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
+                await sync_bot_api_reply_markup(query.message.chat.id, query.message.id, btn)
             except MessageNotModified:
                 pass
         else:
             try:
-                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
+                await edit_styled_reply_markup(query, btn)
             except MessageNotModified:
                 pass
             await query.answer()
@@ -716,7 +729,7 @@ async def language_check(bot, query):
                     pass
             else:
                 try:
-                    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
+                    await edit_styled_reply_markup(query, btn)
                 except MessageNotModified:
                     pass
             await query.answer()
@@ -754,9 +767,7 @@ async def select_language(bot, query):
         InlineKeyboardButton("Gᴏ Bᴀᴄᴋ", callback_data=f"lang#{userid}#home")
     ]]
     try:
-       await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
-       )
+       await edit_styled_reply_markup(query, btn)
     except MessageNotModified:
         pass
     await query.answer()
@@ -784,7 +795,7 @@ async def year_filter(bot, query):
         buttons.append([InlineKeyboardButton("Sᴀʙʜɪ Sᴀᴀʟ", callback_data=f"year#{userid}#home")])
         buttons.append([InlineKeyboardButton("Gᴏ Bᴀᴄᴋ", callback_data=f"year#{userid}#back")])
         try:
-            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(buttons)))
+            await edit_styled_reply_markup(query, buttons)
         except MessageNotModified:
             pass
         await query.answer()
@@ -886,7 +897,7 @@ async def sort_search_results(bot, query):
             InlineKeyboardButton(label, callback_data=f"sort#{userid}#{sort_by}")
         ] for sort_by, label in options.items()]
         try:
-            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(buttons)))
+            await edit_styled_reply_markup(query, buttons)
         except MessageNotModified:
             pass
         await query.answer()
@@ -1030,7 +1041,7 @@ async def quality_check(bot, query):
                     pass
             else:
                 try:
-                    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
+                    await edit_styled_reply_markup(query, btn)
                 except MessageNotModified:
                     pass
             await query.answer()
@@ -1066,9 +1077,7 @@ async def select_quality(bot, query):
         InlineKeyboardButton("Gᴏ Bᴀᴄᴋ", callback_data=f"lusifilms#{userid}#home")
     ]]
     try:
-       await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
-       )
+       await edit_styled_reply_markup(query, btn)
     except MessageNotModified:
         pass
     await query.answer()
@@ -1178,7 +1187,7 @@ async def seasons_check(bot, query):
                     pass
             else:
                 try:
-                    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
+                    await edit_styled_reply_markup(query, btn)
                 except MessageNotModified:
                     pass
             await query.answer()
@@ -1266,9 +1275,7 @@ async def select_seasons(bot, query):
         InlineKeyboardButton("Gᴏ Bᴀᴄᴋ", callback_data=f"seasons#{userid}#home")
     ]]
     try:
-       await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
-       )
+       await edit_styled_reply_markup(query, btn)
     except MessageNotModified:
         pass
     await query.answer()
@@ -1372,7 +1379,7 @@ async def episode_check(bot, query):
                     pass
             else:
                 try:
-                    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
+                    await edit_styled_reply_markup(query, btn)
                 except MessageNotModified:
                     pass
             await query.answer()
@@ -1413,9 +1420,7 @@ async def select_episode2(bot, query):
         InlineKeyboardButton("≪Bᴀᴄᴋ ᴛᴏ Hᴏᴍᴇ≫", callback_data=f"episode#{userid}#home"),
     ]]
     try:
-       await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
-       )
+       await edit_styled_reply_markup(query, btn)
     except MessageNotModified:
         pass
     await query.answer()
@@ -1450,9 +1455,7 @@ async def select_episode(bot, query):
         InlineKeyboardButton("ɴᴇxᴛ ➮", callback_data=f"epi2#{userid}"),
     ]]
     try:
-       await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
-       )
+       await edit_styled_reply_markup(query, btn)
     except MessageNotModified:
         pass
     await query.answer()
@@ -2494,10 +2497,15 @@ async def auto_filter(
                                 message.from_user.id,
                                 message.chat.id,
                             )
-                            await message.reply_text(
+                            sent_suggestions = await message.reply_text(
                                 "Oops baby! Shayad tum ye movie dhoondh rahe ho 😉❤️",
                                 reply_markup=InlineKeyboardMarkup(suggestion_buttons),
                                 reply_to_message_id=message.id,
+                            )
+                            await sync_bot_api_reply_markup(
+                                message.chat.id,
+                                getattr(sent_suggestions, "id", None),
+                                suggestion_buttons,
                             )
                             return
 
@@ -2631,6 +2639,7 @@ async def auto_filter(
         if imdb and imdb.get('poster'):  
             try:
                 hehe = await message.reply_photo(photo=imdb.get('poster'), caption=cap, reply_markup=InlineKeyboardMarkup(btn))
+                await sync_bot_api_reply_markup(message.chat.id, getattr(hehe, "id", None), btn)
                 await m.delete()
                 pending_message = None
                 auto_delete_seconds = get_auto_delete_seconds(settings)
@@ -2642,6 +2651,7 @@ async def auto_filter(
                 pic = imdb.get('poster')
                 poster = pic.replace('.jpg', "._V1_UX360.jpg")
                 hmm = await message.reply_photo(photo=poster, caption=cap, reply_markup=InlineKeyboardMarkup(btn))
+                await sync_bot_api_reply_markup(message.chat.id, getattr(hmm, "id", None), btn)
                 await m.delete()
                 pending_message = None
                 auto_delete_seconds = get_auto_delete_seconds(settings)
@@ -2652,6 +2662,7 @@ async def auto_filter(
             except Exception as e:
                 logger.exception(e)
                 fek = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
+                await sync_bot_api_reply_markup(message.chat.id, getattr(fek, "id", None), btn)
                 await m.delete()
                 pending_message = None
                 auto_delete_seconds = get_auto_delete_seconds(settings)
@@ -2661,6 +2672,7 @@ async def auto_filter(
                     await message.delete()
         else:
             fuk = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
+            await sync_bot_api_reply_markup(message.chat.id, getattr(fuk, "id", None), btn)
             if not preserve_search_message:
                 await message.delete()
             await m.delete()
@@ -2747,6 +2759,7 @@ async def advantage_spell_chok(client, message):
     )
     buttons = apply_search_keyboard_style(buttons)
     d = await message.reply_text(text=script.CUDNT_FND.format(search), reply_markup=InlineKeyboardMarkup(buttons), reply_to_message_id=message.id)
+    await sync_bot_api_reply_markup(message.chat.id, getattr(d, "id", None), buttons)
     await asyncio.sleep(120)
     await d.delete()
     try:
