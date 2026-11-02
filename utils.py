@@ -607,6 +607,17 @@ async def stream_site(link, grp_id):
     except Exception as e:
         logger.error(e)
 
+async def get_stream_delivery_links(user_id, grp_id, online, download, shortener_enabled):
+    is_vip = await db.has_premium_access(user_id)
+    if is_vip or not shortener_enabled:
+        return is_vip, online, download
+
+    return (
+        is_vip,
+        await stream_site(online, grp_id),
+        await stream_site(download, grp_id),
+    )
+
 async def get_shortlink(link, grp_id, is_second_shortener=False, is_third_shortener=False):
     settings = await get_settings(grp_id) if await get_settings(grp_id) else {}
     if is_third_shortener:
