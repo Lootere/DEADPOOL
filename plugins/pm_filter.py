@@ -19,7 +19,7 @@ from info import *
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
-from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message
+from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, is_resolution_locked
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
@@ -625,6 +625,8 @@ async def quality_check(bot, query):
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if quality == "unknown":
             return await query.answer("Sᴇʟᴇᴄᴛ ᴀɴʏ Qᴜᴀʟɪᴛʏꜱ ғʀᴏᴍ ᴛʜᴇ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴs !", show_alert=True)
+        if await is_resolution_locked(quality) and not await db.has_premium_access(query.from_user.id):
+            return await query.answer(get_vip_lock_message(query.from_user.id), show_alert=True)
         movie = temp.KEYWORD.get(query.from_user.id)
         if quality != "home":
             movie = f"{movie} {quality}"
@@ -722,17 +724,22 @@ async def select_quality(bot, query):
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     if int(userid) not in [query.from_user.id, 0]:
         return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
+    resolution_lock = await db.get_setting("RESOLUTION_LOCK", default=True)
+    lock_labels = resolution_lock and not await db.has_premium_access(query.from_user.id)
+
+    def quality_label(quality):
+        return f"🔒 {quality} VIP" if lock_labels else quality
     btn = [[
         InlineKeyboardButton("Sᴇʟᴇᴄᴛ Yᴏᴜʀ Dᴇꜱɪʀᴇᴅ Qᴜᴀʟɪᴛʏꜱ ↓", callback_data=f"lusifilms#{userid}#unknown")
     ],[
         InlineKeyboardButton("480p", callback_data=f"lusifilms#{userid}#480p"),
         InlineKeyboardButton("720p", callback_data=f"lusifilms#{userid}#720p")
     ],[
-        InlineKeyboardButton("1080p", callback_data=f"lusifilms#{userid}#1080p"),
-        InlineKeyboardButton("1080p HQ", callback_data=f"lusifilms#{userid}#1080p HQ")
+        InlineKeyboardButton(high_quality_label("1080p"), callback_data=f"lusifilms#{userid}#1080p"),
+        InlineKeyboardButton(high_quality_label("1080p HQ"), callback_data=f"lusifilms#{userid}#1080p HQ")
     ],[
-        InlineKeyboardButton("1440p", callback_data=f"lusifilms#{userid}#1440p"),
-        InlineKeyboardButton("2160p", callback_data=f"lusifilms#{userid}#2160p")
+        InlineKeyboardButton(high_quality_label("1440p"), callback_data=f"lusifilms#{userid}#1440p"),
+        InlineKeyboardButton(high_quality_label("2160p"), callback_data=f"lusifilms#{userid}#2160p")
     ],[
         InlineKeyboardButton("Gᴏ Bᴀᴄᴋ", callback_data=f"lusifilms#{userid}#home")
     ]]

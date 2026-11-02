@@ -88,6 +88,11 @@ SEARCH_BUTTON_POPUP_MESSAGES = [
     "Aww, apni search se shuru karo ❤️",
 ]
 
+VIP_LOCKED_RESOLUTION_PATTERN = re.compile(
+    r"(?<!\d)(?:1080\s*p|1440\s*p|2160\s*p|4\s*k|uhd)(?!\w)",
+    re.IGNORECASE,
+)
+
 
 def get_vip_lock_message(user_id):
     previous_message = temp.VIP_LOCK_MESSAGES.get(user_id)
@@ -109,6 +114,12 @@ def get_search_button_popup_message(user_id):
     message = random.choice(available_messages)
     temp.VIP_LOCK_MESSAGES[("search", user_id)] = message
     return message
+
+
+async def is_resolution_locked(value):
+    if not await db.get_setting("RESOLUTION_LOCK", default=True):
+        return False
+    return bool(VIP_LOCKED_RESOLUTION_PATTERN.search(str(value or "")))
 
 
 async def check_reset_time():

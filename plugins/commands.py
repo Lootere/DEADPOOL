@@ -20,7 +20,7 @@ from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from info import *
 from .pm_filter import auto_filter
-from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message
+from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked
 from database.connections_mdb import active_connection
 import re
 import json
@@ -42,6 +42,22 @@ async def _send_all_vip_required(message):
 async def _is_shortener_enabled(settings):
     global_enabled = await db.get_setting("IS_VERIFY", default=IS_VERIFY)
     return bool(settings.get("is_verify", IS_VERIFY) and global_enabled)
+
+
+async def _deny_resolution_locked_file(message, file_id):
+    user_id = message.from_user.id
+    if await db.has_premium_access(user_id):
+        return False
+    file_details = await get_file_details(file_id)
+    if not file_details or not await is_resolution_locked(file_details[0].file_name):
+        return False
+    await message.reply_text(
+        get_vip_lock_message(user_id),
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✨ Bʏ VIP ✨", callback_data="premium_info")
+        ]])
+    )
+    return True
 
 
 @Client.on_message(filters.command("start") & filters.incoming)
@@ -185,6 +201,8 @@ async def start(client, message):
                 if not verify_id_info or verify_id_info["verified"]:
                     await message.reply("<b>ʟɪɴᴋ ᴇxᴘɪʀᴇᴅ ᴛʀʏ ᴀɢᴀɪɴ...</b>")
                     return
+                if Lootere.command[1].startswith('verify') and await _deny_resolution_locked_file(message, file_id):
+                    return
                 
                 ist_timezone = pytz.timezone('Asia/Kolkata')
                 if await db.user_verified(user_id):
@@ -272,6 +290,8 @@ async def start(client, message):
                     parse_mode=enums.ParseMode.HTML
                 )
                 return
+        if not data.startswith("allfiles") and await _deny_resolution_locked_file(message, file_id):
+            return
         if not await db.has_premium_access(user_id):
             settings = await get_settings(int(grp_id))
             is_verify = await _is_shortener_enabled(settings)
@@ -1254,13 +1274,13 @@ async def set_mode(client, message):
         if len(args) == 3:
             mode_name = args[1]
             value = args[2].lower() == 'true'  # Convert string to boolean     
-            valid_modes = ["PM_FILTER", "IS_VERIFY", "LIMIT_MODE", "AUTO_FILE_DELETE"]  
+            valid_modes = ["PM_FILTER", "IS_VERIFY", "LIMIT_MODE", "AUTO_FILE_DELETE", "RESOLUTION_LOCK"]
             if mode_name in valid_modes:
                 await db.set_setting(mode_name, value)
                 await message.reply(f"{mode_name} has been set to {value}.")
             else:
-                await message.reply("Invalid mode name. Please use one of the following:\n\nPM_FILTER\n\nIS_VERIFY\nLIMIT_MODE\nAUTO_FILE_DELETE")
+                await message.reply("Invalid mode name. Please use one of the following:\n\nPM_FILTER\n\nIS_VERIFY\nLIMIT_MODE\nAUTO_FILE_DELETE\nRESOLUTION_LOCK")
         else:
-            await message.reply("Please specify the mode name and 'True' or 'False' as arguments. Example: /set_value PM_FILTER True")
+            await message.reply("Please specify the mode name and 'True' or 'False'. Example: /set_value RESOLUTION_LOCK False")
     except Exception as e:
         await message.reply(f"An error occurred: {e}")
