@@ -6,6 +6,8 @@ import ast
 import math
 import random
 import os
+import secrets
+from collections import OrderedDict
 lock = asyncio.Lock()
 import pytz
 from datetime import datetime, timedelta, date, time
@@ -22,7 +24,7 @@ from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerId
 from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, get_flirty_interaction_message, is_resolution_locked
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
-from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
+from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files, get_search_suggestions
 
 from fuzzywuzzy import process
 TIMEZONE = "Asia/Kolkata"
@@ -38,12 +40,37 @@ BUTTONS = {}
 RESULT_SORTS = {}
 SEARCH_FILTERS = {}
 YEAR_FILTER_PREVIOUS = {}
+SEARCH_SUGGESTIONS = OrderedDict()
 
 
 def _get_search_filter_context(query):
     key = f"{query.message.chat.id}-{query.message.id}"
     base_search = BUTTONS.get(key) or temp.KEYWORD.get(query.from_user.id)
     return key, base_search, dict(SEARCH_FILTERS.get(key, {}))
+
+
+def _search_suggestion_buttons(suggestions, user_id, chat_id):
+    buttons = []
+    for suggestion in suggestions:
+        token = secrets.token_urlsafe(6)
+        SEARCH_SUGGESTIONS[token] = (
+            int(user_id),
+            int(chat_id),
+            suggestion["title"],
+        )
+        SEARCH_SUGGESTIONS.move_to_end(token)
+        while len(SEARCH_SUGGESTIONS) > 512:
+            SEARCH_SUGGESTIONS.popitem(last=False)
+
+        title = suggestion["title"]
+        label = title if len(title) <= 60 else title[:57] + "..."
+        buttons.append([
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"search_suggestion#{user_id}#{token}",
+            )
+        ])
+    return buttons
 
 
 def _append_year_sort_controls(buttons, user_id):
@@ -1246,6 +1273,64 @@ async def pm_spoll_choker(bot, query):
             except:
                 pass
 
+@Client.on_callback_query(filters.regex(r"^search_suggestion#"))
+async def search_suggestion_callback(bot, query):
+    answered = False
+    try:
+        _, owner_id, token = query.data.split("#", 2)
+        owner_id = int(owner_id)
+        if owner_id != query.from_user.id:
+            return await query.answer(
+                get_search_button_popup_message(query.from_user.id),
+                show_alert=True,
+            )
+
+        suggestion = SEARCH_SUGGESTIONS.get(token)
+        if not suggestion or suggestion[0] != owner_id:
+            return await query.answer(
+                "Aww jaan, ye suggestion expire ho gayi. Dobara search karo ❤️",
+                show_alert=True,
+            )
+        _, chat_id, title = suggestion
+        if query.message.chat.id != chat_id:
+            return await query.answer(
+                get_search_button_popup_message(query.from_user.id),
+                show_alert=True,
+            )
+        if not query.message.reply_to_message:
+            return await query.answer(
+                "Oops jaan, original search nahi mili. Dobara try karo ❤️",
+                show_alert=True,
+            )
+
+        files, offset, total_results = await get_search_results(
+            chat_id,
+            title,
+            offset=0,
+            filter=True,
+        )
+        if not files:
+            return await query.answer(
+                "Aww jaan, is naam ki file abhi nahi mili 🥺",
+                show_alert=True,
+            )
+        await query.answer()
+        answered = True
+        await auto_filter(bot, query, (title, files, offset, total_results))
+    except Exception:
+        logger.exception(
+            "Indexed title suggestion callback failed (chat_id=%s, user_id=%s)",
+            getattr(getattr(query, "message", None), "chat", None).id
+            if getattr(getattr(query, "message", None), "chat", None)
+            else None,
+            getattr(getattr(query, "from_user", None), "id", None),
+        )
+        if not answered:
+            return await query.answer(
+                "Aww jaan, search mein dikkat aa gayi. Dobara try karo ❤️",
+                show_alert=True,
+            )
+
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
     data = query.data
@@ -2093,11 +2178,18 @@ async def ai_spell_check(chat_id, wrong_name):
     except Exception as e:
         print('Got error while searching movie in ai_spell_check', e)
         
-async def auto_filter(client, msg, spoll=False):
+async def auto_filter(
+    client,
+    msg,
+    spoll=False,
+    suggestions=None,
+    preserve_search_message=False,
+):
     message = msg.message.reply_to_message if spoll else msg
     pending_message = None
     stage = "preparing search"
     search_query = None
+    fuzzy_suggestions = suggestions or []
     try:
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         if not spoll:
@@ -2132,6 +2224,45 @@ async def auto_filter(client, msg, spoll=False):
                     await m.delete()
                     pending_message = None
                     if settings.get("spell_check", SPELL_CHECK_REPLY):
+                        stage = "searching indexed title suggestions"
+                        fuzzy_suggestions = await get_search_suggestions(search)
+                        if fuzzy_suggestions:
+                            best_match = fuzzy_suggestions[0]
+                            if best_match["score"] >= 78:
+                                corrected_files, corrected_offset, corrected_total = (
+                                    await get_search_results(
+                                        message.chat.id,
+                                        best_match["title"],
+                                        offset=0,
+                                        filter=True,
+                                    )
+                                )
+                                if corrected_files:
+                                    original_text = msg.text
+                                    msg.text = best_match["title"]
+                                    try:
+                                        return await auto_filter(
+                                            client,
+                                            msg,
+                                            suggestions=fuzzy_suggestions,
+                                            preserve_search_message=True,
+                                        )
+                                    finally:
+                                        msg.text = original_text
+
+                            suggestion_buttons = _search_suggestion_buttons(
+                                fuzzy_suggestions,
+                                message.from_user.id,
+                                message.chat.id,
+                            )
+                            await message.reply_text(
+                                "Oops baby! Spelling mein thodi gadbad ho gayi 😉 "
+                                "Neeche correct movie name choose karo ❤️",
+                                reply_markup=InlineKeyboardMarkup(suggestion_buttons),
+                                reply_to_message_id=message.id,
+                            )
+                            return
+
                         ai_sts = await message.reply_sticker(sticker=f"CAACAgQAAxkBAAEq2R9mipkiW9ACyj7oQXznwKTPHqNCXQACkBUAA3mRUZGx4GwLX9XCHgQ")
                         st=await message.reply('<b>Ai is Cheking For Your Spelling. Please Wait.</b>') 
                         is_misspelled = await ai_spell_check(chat_id = message.chat.id,wrong_name=search)
@@ -2154,7 +2285,9 @@ async def auto_filter(client, msg, spoll=False):
                 return
         else:
             message = msg.message.reply_to_message  # msg will be callback query
-            search, files, offset, total_results = spoll
+            search, files, offset, total_results = spoll[:4]
+            if len(spoll) > 4:
+                fuzzy_suggestions = spoll[4]
             search_query = search
             m=await message.reply_sticker(sticker="CAACAgIAAxkBAAEVugJljpdfkszexOUZu8hPjuPKty8ZmAACdxgAAqPjKEmMVSFmXGLogR4E",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🅿︎🅻︎🅴︎🅰︎🆂︎🅴︎  🆆︎🅰︎🅸︎🆃︎", url=CHNL_LNK)]]))
@@ -2225,6 +2358,14 @@ async def auto_filter(client, msg, spoll=False):
         else:
             btn.append(
                 [InlineKeyboardButton(text="𝐍𝐎 𝐌𝐎𝐑𝐄 𝐏𝐀𝐆𝐄𝐒 𝐀𝐕𝐀𝐈𝐋𝐀𝐁𝐋𝐄",callback_data="pages")]
+            )
+        if fuzzy_suggestions:
+            btn.extend(
+                _search_suggestion_buttons(
+                    fuzzy_suggestions,
+                    message.from_user.id,
+                    message.chat.id,
+                )
             )
         imdb = None
         if settings.get("imdb", IMDB):
@@ -2306,7 +2447,8 @@ async def auto_filter(client, msg, spoll=False):
                     await message.delete()
         else:
             fuk = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
-            await message.delete()
+            if not preserve_search_message:
+                await message.delete()
             await m.delete()
             pending_message = None
             try:

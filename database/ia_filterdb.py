@@ -4,6 +4,8 @@ import logging
 from struct import pack
 import re
 import base64
+from collections.abc import Mapping
+from difflib import SequenceMatcher
 from pyrogram.file_id import FileId
 from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
@@ -149,16 +151,6 @@ def _filter_term_pattern(filter_name, value):
 
 def _build_search_filter(query, file_type=None, filters=None):
     terms = query.split()
-    if len(terms) == 1:
-        raw_pattern = (
-            r"(^|[\s\.\+\-_])"
-            + _search_term_pattern(terms[0])
-            + r"($|[\s\.\+\-_])"
-        )
-    else:
-        raw_pattern = r"[\s\.\+\-_]+".join(
-            _search_term_pattern(term) for term in terms
-        )
     search_fields = ["file_name", "caption"] if USE_CAPTION_FILTER else ["file_name"]
 
     def searchable_pattern(pattern):
@@ -166,9 +158,16 @@ def _build_search_filter(query, file_type=None, filters=None):
             return {search_fields[0]: pattern}
         return {"$or": [{field: pattern} for field in search_fields]}
 
-    query_conditions = [
-        searchable_pattern(re.compile(raw_pattern, flags=re.IGNORECASE))
-    ]
+    query_conditions = []
+    for term in terms:
+        raw_pattern = (
+            r"(?:^|[\s\.\+\-_])"
+            + _search_term_pattern(term)
+            + r"(?=$|[\s\.\+\-_])"
+        )
+        query_conditions.append(
+            searchable_pattern(re.compile(raw_pattern, flags=re.IGNORECASE))
+        )
     for filter_name, value in (filters or {}).items():
         pattern = re.compile(
             _filter_term_pattern(filter_name, value), flags=re.IGNORECASE
@@ -183,6 +182,147 @@ def _build_search_filter(query, file_type=None, filters=None):
     if file_type:
         mongo_filter["file_type"] = file_type
     return mongo_filter
+
+
+def _suggestion_title(file_name):
+    title = _clean_display_file_name(file_name)
+    title = re.sub(r"\.(?:mkv|mp4|avi|mov|webm)$", "", title, flags=re.IGNORECASE)
+    metadata = re.compile(
+        r"(?i)(?:\b(?:s\d{1,2}\s*e\d{1,3}|season\s*\d+|episode\s*\d+|"
+        r"\d{3,4}\s*p|4\s*k|8\s*k|hdrip|brrip|webrip|web[\s._-]*dl|"
+        r"blu[\s._-]*ray|hdtv|dvdrip|x26[45]|h\.?26[45]|hevc|avc|"
+        r"hindi|english|tamil|telugu|kannada|malayalam|gujarati|marathi|"
+        r"punjabi|multi[\s._-]*audio|dual[\s._-]*audio|aac|ddp\d*|"
+        r"ac3|dts|esub|subtitles?)\b|(?<!\d)(?:19|20)\d{2}(?!\d))"
+    )
+    match = metadata.search(title)
+    if match:
+        title = title[:match.start()]
+    title = re.sub(r"[\s._+\-]+", " ", title).strip(" ()[]{}")
+    return title or _clean_display_file_name(file_name)
+
+
+def _normalized_suggestion_text(value):
+    return " ".join(re.findall(r"[a-z0-9]+", str(value).lower()))
+
+
+def _suggestion_similarity(query, title):
+    query_text = _normalized_suggestion_text(query)
+    title_text = _normalized_suggestion_text(title)
+    if not query_text or not title_text:
+        return 0
+
+    query_compact = query_text.replace(" ", "")
+    title_compact = title_text.replace(" ", "")
+    ratio = SequenceMatcher(None, query_compact, title_compact).ratio()
+    if len(query_compact) <= len(title_compact):
+        shorter, longer = query_compact, title_compact
+    else:
+        shorter, longer = title_compact, query_compact
+    min_window = max(1, len(shorter) - 2)
+    max_window = min(len(longer), len(shorter) + 2)
+    partial = max(
+        (
+            SequenceMatcher(
+                None,
+                shorter,
+                longer[start:start + window_length],
+            ).ratio()
+            for window_length in range(min_window, max_window + 1)
+            for start in range(len(longer) - window_length + 1)
+        ),
+        default=0,
+    )
+    token_ratio = SequenceMatcher(
+        None,
+        " ".join(sorted(query_text.split())),
+        " ".join(sorted(title_text.split())),
+    ).ratio()
+    combined_word_score = 0
+    numeric_title_query = re.fullmatch(r"([a-z]+)(\d+)", query_compact)
+    if numeric_title_query:
+        title_tokens = set(title_text.split())
+        if (
+            numeric_title_query.group(1) in title_tokens
+            and numeric_title_query.group(2) in title_tokens
+        ):
+            combined_word_score = 0.9
+    return round(
+        100 * max(ratio, partial * 0.92, token_ratio, combined_word_score)
+    )
+
+
+async def get_search_suggestions(query, limit=8, candidate_limit=500):
+    """Return bounded, fuzzy-ranked title suggestions from indexed filenames."""
+    normalized_query = _normalized_suggestion_text(query)
+    first_token = normalized_query.split(" ")[0] if normalized_query else ""
+    if len(first_token) < 2:
+        return []
+
+    def case_insensitive_character(character):
+        if character.isalpha():
+            return f"[{character.lower()}{character.upper()}]"
+        return re.escape(character)
+
+    indexed_prefix = re.compile(
+        "^"
+        + case_insensitive_character(first_token[0])
+        + r".{0,2}"
+        + case_insensitive_character(first_token[1])
+    )
+    logger.info(
+        "Indexed title suggestion search started (collection=%s, query=%r, limit=%s)",
+        COLLECTION_NAME,
+        normalized_query,
+        candidate_limit,
+    )
+
+    async def get_ranked_titles(pattern):
+        cursor = Media.find({"file_name": pattern})
+        cursor.sort("file_name", 1).limit(candidate_limit)
+        candidate_documents = await cursor.to_list(length=candidate_limit)
+
+        titles = {}
+        for document in candidate_documents:
+            file_name = (
+                document.get("file_name")
+                if isinstance(document, Mapping)
+                else getattr(document, "file_name", None)
+            )
+            title = _suggestion_title(file_name)
+            normalized_title = _normalized_suggestion_text(title)
+            if not normalized_title:
+                continue
+            score = _suggestion_similarity(normalized_query, title)
+            if normalized_title not in titles or score > titles[normalized_title]["score"]:
+                titles[normalized_title] = {"title": title, "score": score}
+
+        ranked_titles = sorted(
+            (suggestion for suggestion in titles.values() if suggestion["score"] >= 65),
+            key=lambda suggestion: suggestion["score"],
+            reverse=True,
+        )[:limit]
+        return candidate_documents, ranked_titles
+
+    documents, suggestions = await get_ranked_titles(indexed_prefix)
+    if not suggestions:
+        token_prefix = re.compile(
+            r"(?:^|[\s._+\-])"
+            + re.escape(first_token[0])
+            + r".{0,2}"
+            + re.escape(first_token[1]),
+            flags=re.IGNORECASE,
+        )
+        documents, suggestions = await get_ranked_titles(token_prefix)
+
+    logger.info(
+        "Indexed title suggestion search completed (collection=%s, query=%r, candidates=%s, suggestions=%s)",
+        COLLECTION_NAME,
+        normalized_query,
+        len(documents),
+        len(suggestions),
+    )
+    return suggestions
 
 
 client = AsyncIOMotorClient(DATABASE_URI)
