@@ -37,6 +37,7 @@ logger.setLevel(logging.ERROR)
 BUTTONS = {}
 RESULT_SORTS = {}
 SEARCH_FILTERS = {}
+YEAR_FILTER_PREVIOUS = {}
 
 
 def _get_search_filter_context(query):
@@ -575,7 +576,9 @@ async def year_filter(bot, query):
         return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
     if len(parts) == 2:
-        years = range(datetime.now().year, datetime.now().year - 15, -1)
+        key, _, search_filters = _get_search_filter_context(query)
+        YEAR_FILTER_PREVIOUS[key] = search_filters
+        years = range(2030, 1949, -1)
         buttons = []
         year_row = []
         for year in years:
@@ -586,6 +589,7 @@ async def year_filter(bot, query):
         if year_row:
             buttons.append(year_row)
         buttons.append([InlineKeyboardButton("Sᴀʙʜɪ Sᴀᴀʟ", callback_data=f"year#{userid}#home")])
+        buttons.append([InlineKeyboardButton("Gᴏ Bᴀᴄᴋ", callback_data=f"year#{userid}#back")])
         try:
             await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
         except MessageNotModified:
@@ -593,12 +597,46 @@ async def year_filter(bot, query):
         await query.answer()
         return
 
-    if len(parts) != 3 or (parts[2] != "home" and not re.fullmatch(r"\d{4}", parts[2])):
+    if len(parts) != 3:
         return await query.answer("Sᴀᴀʟ sᴇʟᴇᴄᴛ ᴋᴀʀᴏ 😏", show_alert=True)
 
     key, base_search, search_filters = _get_search_filter_context(query)
     if not base_search:
         return await query.answer("Pᴇʜʟᴇ ᴍᴏᴠɪᴇ sᴇᴀʀᴄʜ ᴋᴀʀᴏ 😏", show_alert=True)
+    if parts[2] == "back":
+        search_filters = YEAR_FILTER_PREVIOUS.get(key, search_filters)
+        SEARCH_FILTERS[key] = search_filters
+        settings = await get_settings(query.message.chat.id)
+        files, next_offset, total_results = await get_search_results(
+            query.message.chat.id,
+            base_search,
+            offset=0,
+            filter=True,
+            sort_by=RESULT_SORTS.get(key, "season"),
+            filters=search_filters,
+        )
+        temp.GETALL[key] = files
+        temp.CHAT[query.from_user.id] = query.message.chat.id
+        BUTTONS[key] = base_search
+        buttons = _build_search_keyboard(
+            files,
+            userid,
+            key,
+            next_offset,
+            total_results,
+            settings,
+        )
+        try:
+            await _update_search_results_message(
+                query, settings, files, base_search, total_results, buttons
+            )
+        except MessageNotModified:
+            pass
+        await query.answer()
+        return
+    if parts[2] != "home" and not re.fullmatch(r"(?:19[5-9]\d|20[0-2]\d|2030)", parts[2]):
+        return await query.answer("1950 sᴇ 2030 ᴋᴇ ʙᴇᴇᴄʜ ᴋᴀ sᴀᴀʟ ᴄʜᴜɴᴏ 😏", show_alert=True)
+
     if parts[2] == "home":
         search_filters.pop("year", None)
     else:
@@ -610,7 +648,8 @@ async def year_filter(bot, query):
         sort_by=sort_by, filters=search_filters
     )
     if not files:
-        return await query.answer(f"{parts[2]} ᴋᴇ ʟɪʏᴇ ғɪʟᴇ ɴᴀʜɪ ᴍɪʟɪ 😏", show_alert=True)
+        await _update_no_search_results_message(query)
+        return await query.answer()
 
     settings = await get_settings(query.message.chat.id)
     temp.GETALL[key] = files

@@ -141,8 +141,8 @@ def _filter_term_pattern(filter_name, value):
     if filter_name == "episode":
         return token_start + _search_term_pattern(value) + token_end
 
-    if filter_name == "year" and re.fullmatch(r"\d{4}", value):
-        return token_start + re.escape(value) + token_end
+    if filter_name == "year" and re.fullmatch(r"(?:19[5-9]\d|20[0-2]\d|2030)", value):
+        return rf"(?<!\d){re.escape(value)}(?!\d)"
 
     raise ValueError(f"Unsupported search filter: {filter_name}")
 
