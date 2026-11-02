@@ -97,6 +97,27 @@ async def _update_search_results_message(query, settings, files, search, total_r
         await query.edit_message_reply_markup(reply_markup=markup)
 
 
+RESOLUTION_LOCK_MESSAGES = [
+    "{resolution} chahiye baby? 😘 Ye sirf VIP ke liye hai. 480p ya 720p try karo ❤️",
+    "Oho jaan! {resolution} ki demand hai? 😉 VIP bano phir full quality ka maza lo 💋",
+    "Darling, {resolution} chahiye? 😍 Ye VIP ka exclusive feature hai.",
+    "Aww baby! {resolution} quality? 🥺 Pehle VIP bano jaan ❤️",
+    "{resolution} par nazar hai cutie? 😈 Ye VIP members ke liye reserved hai.",
+]
+
+
+def _get_resolution_lock_message(user_id, resolution):
+    key = ("resolution_lock", user_id)
+    previous_message = temp.VIP_LOCK_MESSAGES.get(key)
+    available_messages = [
+        message for message in RESOLUTION_LOCK_MESSAGES
+        if message != previous_message
+    ]
+    message_template = random.choice(available_messages)
+    temp.VIP_LOCK_MESSAGES[key] = message_template
+    return message_template.format(resolution=resolution)
+
+
 
 @Client.on_callback_query(filters.regex(r"^streaming"))
 async def stream_download(bot, query):
@@ -629,7 +650,10 @@ async def quality_check(bot, query):
         if quality == "unknown":
             return await query.answer("Baby, pehle apni pasand ki quality choose karo 😘", show_alert=True)
         if await is_resolution_locked(quality) and not await db.has_premium_access(query.from_user.id):
-            return await query.answer(get_vip_lock_message(query.from_user.id), show_alert=True)
+            return await query.answer(
+                text=_get_resolution_lock_message(query.from_user.id, quality),
+                show_alert=True,
+            )
         movie = temp.KEYWORD.get(query.from_user.id)
         if quality != "home":
             movie = f"{movie} {quality}"
