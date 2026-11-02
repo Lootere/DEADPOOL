@@ -1,0 +1,10 @@
+{
+  "name": "rkmovieszip-deadpool-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RKMOVIESZIP Telegram Filter Bot with Multi-MongoDB Storage Manager and Premium Hub",
+  "scripts": {
+    "dev": "python3 app.py",
+    "start": "python3 app.py"
+  }
+}
