@@ -20,7 +20,7 @@ from pyrogram import types
 from Script import script 
 from datetime import date, datetime 
 import pytz
-from utils import temp, check_reset_time
+from utils import temp
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -75,7 +75,6 @@ async def start():
     temp.B_NAME = me.first_name
     LootereBot.username = '@' + me.username
     LootereBot.loop.create_task(check_expired_premium(LootereBot))
-    LootereBot.loop.create_task(check_reset_time())
     logging.info(f"{me.first_name} with for Pyrogram v{__version__} (Layer {layer}) started on {me.username}.")
     logging.info(LOG_STR)
     logging.info(script.LOGO)

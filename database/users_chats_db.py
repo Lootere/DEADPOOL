@@ -1,6 +1,7 @@
 # This code has been modified by @Looteredev
 # Please do not remove this credit
 import motor.motor_asyncio
+from pymongo import ReturnDocument
 from info import DATABASE_NAME, DATABASE_URI, IMDB, IMDB_TEMPLATE, MELCOW_NEW_USERS, SINGLE_BUTTON, SPELL_CHECK_REPLY, AUTO_DELETE, MAX_BTN, AUTO_FFILTER, TUTORIAL, TUTORIAL2, TUTORIAL3, REFERAL_TIME, STREAM_API, STREAM_SITE, VERIFY_URL, VERIFY_API, \
 VERIFY_URL2, VERIFY_API2, VERIFY_URL3, VERIFY_API3, LIMIT_MODE, TWO_VERIFY_GAP, THIRD_VERIFY_GAP, STREAM_MODE, LOG_CHANNEL, IS_VERIFY, AUTH_CHANNEL, CUSTOM_FILE_CAPTION, FILE_LIMITE, SEND_ALL_LIMITE, STREAM_SITE, STREAM_API
 from datetime import datetime, timedelta
@@ -236,6 +237,64 @@ class Database:
         
     async def update_files(self, user_id, key, value):
         await self.col.update_one({"id": user_id}, {"$set": {key: value}})
+
+    async def consume_daily_limit(self, user_id, key, limit):
+        if key not in ("files_count", "send_all"):
+            raise ValueError(f"Unsupported daily usage counter: {key}")
+        limit = int(limit)
+        if limit < 0:
+            raise ValueError("Daily usage limits cannot be negative")
+
+        user_id = int(user_id)
+        usage_date = datetime.now(pytz.timezone("Asia/Kolkata")).date().isoformat()
+        await self.col.update_one(
+            {"id": user_id},
+            {"$setOnInsert": self.new_user(user_id, "None")},
+            upsert=True,
+        )
+        await self.col.update_one(
+            {
+                "id": user_id,
+                "daily_usage_date": {"$exists": False},
+            },
+            {"$set": {"daily_usage_date": usage_date}},
+        )
+        await self.col.update_one(
+            {"id": user_id, "daily_usage_date": {"$ne": usage_date}},
+            {
+                "$set": {
+                    "daily_usage_date": usage_date,
+                    "files_count": 0,
+                    "send_all": 0,
+                }
+            },
+        )
+        await self.col.update_one(
+            {
+                "id": user_id,
+                "daily_usage_date": usage_date,
+                key: {"$exists": False},
+            },
+            {"$set": {key: 0}},
+        )
+
+        updated_user = await self.col.find_one_and_update(
+            {
+                "id": user_id,
+                "daily_usage_date": usage_date,
+                key: {"$lt": limit},
+            },
+            {"$inc": {key: 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated_user:
+            return True, updated_user[key]
+
+        user = await self.col.find_one(
+            {"id": user_id, "daily_usage_date": usage_date},
+            {"_id": 0, key: 1},
+        )
+        return False, user.get(key, 0) if user else 0
     
     async def reset_all_files_count(self):
         await self.col.update_many({}, {"$set": {"files_count": 0}})
@@ -247,7 +306,7 @@ class Database:
         user = await self.col.find_one({"id": user_id})
         if user is None:
             return
-        await self.col.update_one({"id": user_id}, {"$set": {"files_coun": 0}})
+        await self.col.update_one({"id": user_id}, {"$set": {"files_count": 0}})
 
     async def add_chat(self, chat, title, owner_id):
         chat = self.new_group(chat, title, owner_id)

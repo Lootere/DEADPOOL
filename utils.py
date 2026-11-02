@@ -151,24 +151,6 @@ async def is_resolution_locked(value):
     return bool(VIP_LOCKED_RESOLUTION_PATTERN.search(str(value or "")))
 
 
-async def check_reset_time():
-    tz = pytz.timezone('Asia/Kolkata')
-    while True:
-        now = datetime.now(tz)
-        target_time = time(23, 59)
-        target_datetime = tz.localize(datetime.combine(now.date(), target_time))
-        if now > target_datetime:
-            target_datetime += timedelta(days=1)
-        time_diff = (target_datetime - now).total_seconds()
-        hours = time_diff // 3600
-        minutes = (time_diff % 3600) // 60
-        seconds = time_diff % 60
-        logging.info(f"Next reset in {int(hours)} hours, {int(minutes)} minutes, and {int(seconds)} seconds.")
-        await asyncio.sleep(time_diff)
-        await db.reset_all_files_count()
-        await db.reset_allsend_files()
-        logging.info("Files count and send count reset successfully")
-
 async def get_seconds(time_string):
     def extract_value_and_unit(ts):
         value = ""

@@ -39,6 +39,31 @@ async def _send_all_vip_required(message):
     )
 
 
+async def _consume_daily_limit(message, settings, counter, setting_key, default_limit, text):
+    if await db.has_premium_access(message.from_user.id):
+        return True, None
+    if not settings.get("filelock", LIMIT_MODE):
+        return True, None
+
+    limit = int(settings.get(setting_key, default_limit))
+    allowed, count = await db.consume_daily_limit(
+        message.from_user.id,
+        counter,
+        limit,
+    )
+    if not allowed:
+        await message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "✨ Rᴇᴍᴏᴠᴇ Lɪᴍɪᴛᴇ ✨",
+                    callback_data="premium_info",
+                )
+            ]]),
+        )
+    return allowed, count
+
+
 async def _is_shortener_enabled(settings):
     global_enabled = await db.get_setting("IS_VERIFY", default=IS_VERIFY)
     return bool(settings.get("is_verify", IS_VERIFY) and global_enabled)
@@ -65,8 +90,6 @@ async def start(client, message):
     try: 
         await message.react(emoji=random.choice(REACTION), big=True)
         user_id = message.from_user.id
-        send_count = await db.files_count(message.from_user.id, "send_all") or 0
-        files_counts = await db.files_count(message.from_user.id, "files_count") or 0
         if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
             buttons = [[
                         InlineKeyboardButton('☆ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ☆', url=f'http://t.me/{temp.U_NAME}?startgroup=true')
@@ -347,6 +370,13 @@ async def start(client, message):
             for file in files:
                 file_id = file.file_id
                 files_ = await get_file_details(file_id)
+                if not files_:
+                    logger.warning(
+                        "Send-all file missing from database (user_id=%s, file_id=%s)",
+                        message.from_user.id,
+                        file_id,
+                    )
+                    continue
                 files1 = files_[0]
                 settings = await get_settings(int(grp_id))
                 CAPTION = settings.get('caption', CUSTOM_FILE_CAPTION)
@@ -355,19 +385,24 @@ async def start(client, message):
                     file_size = get_size(files1.file_size),
                     file_caption=files1.caption
                 )
-                if not await db.has_premium_access(message.from_user.id):
-                    limit = settings.get("all_limit", SEND_ALL_LIMITE)
-                    if settings.get("filelock", LIMIT_MODE):
-                        await db.update_files(message.from_user.id, "send_all", send_count + 1)
-                        files_count=await db.files_count(message.from_user.id, "send_all")
-                        f_caption += f"<b>\n\nAʟʟ Bᴜᴛᴛᴏɴ Lɪᴍɪᴛ : {files_count}/{limit}</b>"
-                        if send_count is not None and send_count >= limit:
-                            buttons = [[
-                                       InlineKeyboardButton('✨ Rᴇᴍᴏᴠᴇ Lɪᴍɪᴛᴇ ✨', callback_data=f'premium_info')
-                                      ]]
-                            reply_markup = InlineKeyboardMarkup(buttons)
-                            return await message.reply_text(script.BUTTON_LIMIT, 
-                            reply_markup=reply_markup)
+                allowed, usage_count = await _consume_daily_limit(
+                    message,
+                    settings,
+                    "send_all",
+                    "all_limit",
+                    SEND_ALL_LIMITE,
+                    script.BUTTON_LIMIT,
+                )
+                if not allowed:
+                    if not filesarr:
+                        return
+                    break
+                if usage_count is not None:
+                    limit = int(settings.get("all_limit", SEND_ALL_LIMITE))
+                    f_caption += (
+                        f"<b>\n\nAʟʟ Bᴜᴛᴛᴏɴ Lɪᴍɪᴛ : "
+                        f"{usage_count}/{limit}</b>"
+                    )
                 button = [[
                     InlineKeyboardButton("🖥️ ᴡᴀᴛᴄʜ / ᴅᴏᴡɴʟᴏᴀᴅ 📥", callback_data=f"streaming#{file_id}#{grp_id}")
                     ]]
@@ -391,19 +426,16 @@ async def start(client, message):
         if not files_:
             pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("ascii")).split("_", 1)
             try:
-                if not await db.has_premium_access(message.from_user.id):
-                    limit = settings.get("file_limit", FILE_LIMITE)
-                    if settings.get("filelock", LIMIT_MODE):
-                        await db.update_files(message.from_user.id, "files_count", files_counts + 1)
-                        files_count=await db.files_count(message.from_user.id, "files_count")
-                        f_caption += f"<b>\n\nDᴀɪʟʏ Fɪʟᴇ Lɪᴍɪᴛ: {files_count}/{limit}</b>"      
-                        if files_counts is not None and files_counts >= limit:
-                            buttons = [[
-                                       InlineKeyboardButton('✨ Rᴇᴍᴏᴠᴇ Lɪᴍɪᴛᴇ ✨', callback_data=f'premium_info')
-                                      ]]
-                            reply_markup = InlineKeyboardMarkup(buttons)
-                            return await message.reply_text(script.FILE_LIMIT,
-                            reply_markup=reply_markup)
+                allowed, usage_count = await _consume_daily_limit(
+                    message,
+                    settings,
+                    "files_count",
+                    "file_limit",
+                    FILE_LIMITE,
+                    script.FILE_LIMIT,
+                )
+                if not allowed:
+                    return
                 button = [[
                     InlineKeyboardButton("🖥️ ᴡᴀᴛᴄʜ / ᴅᴏᴡɴʟᴏᴀᴅ 📥", callback_data=f"streaming#{file_id}#{grp_id}")
                     ]]
@@ -424,11 +456,23 @@ async def start(client, message):
                         f_caption=CUSTOM_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='')
                     except:
                         return
+                if usage_count is not None:
+                    limit = int(settings.get("file_limit", FILE_LIMITE))
+                    f_caption += (
+                        f"\n\n<b>Dᴀɪʟʏ Fɪʟᴇ Lɪᴍɪᴛ: "
+                        f"{usage_count}/{limit}</b>"
+                    )
                 await msg.edit_caption(f_caption)
                 return
-            except:
-                pass
-            return await message.reply('Nᴏ sᴜᴄʜ ғɪʟᴇ ᴇxɪsᴛ.')
+            except Exception:
+                logger.exception(
+                    "Legacy file delivery failed (user_id=%s, file_id=%s)",
+                    message.from_user.id,
+                    file_id,
+                )
+                return await message.reply(
+                    "Aww, file bhejne mein issue aa gaya. Dobara try karo."
+                )
         
         files = files_[0]
         settings = await get_settings(int(grp_id))
@@ -438,19 +482,22 @@ async def start(client, message):
             file_size = get_size(files.file_size),
             file_caption=files.caption
         )
-        if not await db.has_premium_access(message.from_user.id):
-            limit = settings.get("file_limit", FILE_LIMITE)
-            if settings.get("filelock", LIMIT_MODE):
-                await db.update_files(message.from_user.id, "files_count", files_counts + 1)
-                files_count=await db.files_count(message.from_user.id, "files_count")
-                f_caption += f"<b>\n\nDᴀɪʟʏ Fɪʟᴇ Lɪᴍɪᴛ: {files_count}/{limit}</b>"      
-                if files_counts is not None and files_counts >= limit:
-                    buttons = [[
-                               InlineKeyboardButton('✨ Rᴇᴍᴏᴠᴇ Lɪᴍɪᴛᴇ ✨', callback_data=f'premium_info')
-                              ]]
-                    reply_markup = InlineKeyboardMarkup(buttons)
-                    return await message.reply_text(script.FILE_LIMIT,
-                    reply_markup=reply_markup)
+        allowed, usage_count = await _consume_daily_limit(
+            message,
+            settings,
+            "files_count",
+            "file_limit",
+            FILE_LIMITE,
+            script.FILE_LIMIT,
+        )
+        if not allowed:
+            return
+        if usage_count is not None:
+            limit = int(settings.get("file_limit", FILE_LIMITE))
+            f_caption += (
+                f"<b>\n\nDᴀɪʟʏ Fɪʟᴇ Lɪᴍɪᴛ: "
+                f"{usage_count}/{limit}</b>"
+            )
         button = [[
             InlineKeyboardButton("🖥️ ᴡᴀᴛᴄʜ / ᴅᴏᴡɴʟᴏᴀᴅ 📥", callback_data=f"streaming#{file_id}#{grp_id}")
             ]]
@@ -468,8 +515,15 @@ async def start(client, message):
             await asyncio.sleep(900)
             await Lootere.delete() 
             await del_msg.edit_text("<b>ʏᴏᴜʀ ғɪʟᴇ ᴡᴀs ᴅᴇʟᴇᴛᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ ᴀғᴛᴇʀ 10 ᴍɪɴᴜᴛᴇs ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ 📢</b>")
-    except Exception as e:
-        await message.reply(f"{e}")
+    except Exception:
+        logger.exception(
+            "File delivery failed (user_id=%s, command=%r)",
+            getattr(getattr(message, "from_user", None), "id", None),
+            getattr(message, "command", None),
+        )
+        await message.reply(
+            "Aww, file bhejne mein issue aa gaya. Thodi der baad try karo."
+        )
         
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
@@ -1129,6 +1183,8 @@ async def set_file_limit(client, message):
         limit = int(message.text.split(" ", 1)[1])
     except:
         return await message.reply_text("<b>ᴄᴏᴍᴍᴀɴᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ\n\nᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ʟɪᴋᴇ ᴛʜɪꜱ - <code>/set_file_limit 15</code></b>")   
+    if limit < 0:
+        return await message.reply_text("<b>ғɪʟᴇ ʟɪᴍɪᴛ ᴄᴀɴɴᴏᴛ ʙᴇ ɴᴇɢᴀᴛɪᴠᴇ.</b>")
     await save_group_settings(grp_id, 'file_limit', limit)
     await message.reply_text(f"<b>✅️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ꜱᴇᴛ ғɪʟᴇ ʟɪᴍɪᴛ ꜰᴏʀ {title}\n\nғɪʟᴇ ʟɪᴍɪᴛ - <u><code>{limit}</code></u></b>")
     await client.send_message(LOG_CHANNEL, f"file limit seted <b>`{limit}`</b> for {title} (Group ID: {grp_id}, Invite Link: {invite_link}) has been updated by {message.from_user.username}")
@@ -1149,6 +1205,8 @@ async def set_send_limit(client, message):
         limit = int(message.text.split(" ", 1)[1])
     except:
         return await message.reply_text("<b>ᴄᴏᴍᴍᴀɴᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ\n\nᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ʟɪᴋᴇ ᴛʜɪꜱ - <code>/set_allfiles_limit 3</code></b>")   
+    if limit < 0:
+        return await message.reply_text("<b>sᴇɴᴅ ᴀʟʟ ʟɪᴍɪᴛ ᴄᴀɴɴᴏᴛ ʙᴇ ɴᴇɢᴀᴛɪᴠᴇ.</b>")
     await save_group_settings(grp_id, 'all_limit', limit)
     await message.reply_text(f"<b>✅️ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ꜱᴇᴛ sᴇɴᴅ ʙᴜᴛᴛᴏɴ ʟɪᴍɪᴛ ꜰᴏʀ {title}\n\nsᴇɴᴅ ʙᴜᴛᴛᴏɴ ʟɪᴍɪᴛ - <u><code>{limit}</code></u></b>")
     await client.send_message(LOG_CHANNEL, f"send button limit seted <b>`{limit}`</b> for {title} (Group ID: {grp_id}, Invite Link: {invite_link}) has been updated by {message.from_user.username}")
