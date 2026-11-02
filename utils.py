@@ -58,22 +58,44 @@ class temp(object):
 
 
 VIP_LOCK_POPUP_MESSAGES = [
-    "Ye sirf VIP ke liye hai 😉",
-    "VIP ban jao bhai 😂",
-    "Itni aasani se VIP access nahi milega 😎",
-    "VIP membership le lo mere bhai ❤️",
-    "Ye feature sirf khaas logon ke liye hai 🔥",
-    "VIP nahi ho? Toh VIP ban jao 😁",
-    "Free mein itna hi milega bhai 😂",
-    "VIP users ke liye special treatment hai 👑",
-    "Pehle VIP membership lo, phir maze karo 😜",
-    "VIP club mein welcome hone ka time aa gaya 😎",
-    "Ye button VIP members ke liye reserved hai 🔐",
-    "Bhai VIP banne ka plan kab hai? 😂",
-    "VIP access ke bina entry band hai 🚫",
-    "Thoda VIP bano, phir try karo 😉",
-    "VIP members are special ❤️",
+    "Sorry jaan, ye exclusive feature sirf VIPs ke liye hai 👑😘",
+    "Aww baby, VIP banogi tabhi ye unlock hoga 😉",
+    "Jaan, VIP club mein entry le lo na 👑",
+    "Ye khaas button VIP cuties ke liye reserved hai 😘",
+    "VIP access le lo baby, phir full maze ❤️",
 ]
+
+FLIRTY_INTERACTION_MESSAGES = {
+    "quality_open": [
+        "Baby, apni pasand ki quality choose karo 😘",
+        "Jaan, kaunsi quality mein movie dekhni hai? 😉",
+        "Best print choose karo, cutie ✨",
+    ],
+    "language_open": [
+        "Jaan, kis language mein dekhna pasand karoge? ❤️",
+        "Baby, apni favourite language choose karo 😘",
+        "Hindi ya English, jaan? Pick your vibe 😉",
+    ],
+    "episode_open": [
+        "Darling, apna favourite episode select karo 😉",
+        "Jaan, kaunsa episode play karein? 😘",
+        "Episode choose karo baby, binge shuru karein 🍿",
+    ],
+    "season_open": [
+        "Baby, apna favourite season choose karo 😘",
+        "Jaan, kis season se shuru karein? 😉",
+    ],
+    "filter_selected": [
+        "Perfect choice jaan! 😍",
+        "Wah baby, ekdum sahi pick 😘",
+        "Nice choice, cutie! 🍿",
+    ],
+    "no_results": [
+        "Aww baby, tumhari pasand ki file nahi mili 🥺",
+        "Jaan, is choice mein file nahi mili 😔",
+        "Oops cutie, ye result nahi mila. Kuch aur try karein? 😉",
+    ],
+}
 
 SEARCH_BUTTON_POPUP_MESSAGES = [
     "Aww 😏 yeh search tumhari nahi hai, cutie.",
@@ -95,13 +117,20 @@ VIP_LOCKED_RESOLUTION_PATTERN = re.compile(
 
 
 def get_vip_lock_message(user_id):
-    previous_message = temp.VIP_LOCK_MESSAGES.get(user_id)
-    available_messages = [
-        message for message in VIP_LOCK_POPUP_MESSAGES
-        if message != previous_message
-    ]
+    return get_flirty_interaction_message(user_id, "vip_locked")
+
+
+def get_flirty_interaction_message(user_id, interaction):
+    messages = (
+        VIP_LOCK_POPUP_MESSAGES
+        if interaction == "vip_locked"
+        else FLIRTY_INTERACTION_MESSAGES[interaction]
+    )
+    key = ("flirty", interaction, user_id)
+    previous_message = temp.VIP_LOCK_MESSAGES.get(key)
+    available_messages = [message for message in messages if message != previous_message]
     message = random.choice(available_messages)
-    temp.VIP_LOCK_MESSAGES[user_id] = message
+    temp.VIP_LOCK_MESSAGES[key] = message
     return message
 
 

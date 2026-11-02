@@ -19,7 +19,7 @@ from info import *
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
-from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, is_resolution_locked
+from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, get_flirty_interaction_message, is_resolution_locked
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
@@ -377,7 +377,7 @@ async def next_page(bot, query):
         await query.answer(f"error found out\n\n{e}", show_alert=True)
         return
     
-@Client.on_callback_query(filters.regex(r"^lang"))
+@Client.on_callback_query(filters.regex(r"^lang#"))
 async def language_check(bot, query):
     try:
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
@@ -385,7 +385,7 @@ async def language_check(bot, query):
         if int(userid) not in [query.from_user.id, 0]:
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if language == "unknown":
-            return await query.answer("Sᴇʟᴇᴄᴛ ᴀɴʏ ʟᴀɴɢᴜᴀɢᴇ ғʀᴏᴍ ᴛʜᴇ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴs !", show_alert=True)
+            return await query.answer("Jaan, pehle apni favourite language choose karo ❤️", show_alert=True)
         movie = temp.KEYWORD.get(query.from_user.id)
         if language != "home":
             movie = f"{movie} {language}"
@@ -471,14 +471,17 @@ async def language_check(bot, query):
                     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 except MessageNotModified:
                     pass
-                await query.answer()
+            await query.answer(get_flirty_interaction_message(query.from_user.id, "filter_selected"))
         else:
-            return await query.answer(f"Sᴏʀʀʏ, Nᴏ ғɪʟᴇs ғᴏᴜɴᴅ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {movie}.", show_alert=True)
+            return await query.answer(
+                get_flirty_interaction_message(query.from_user.id, "no_results"),
+                show_alert=True,
+            )
     except Exception as e:
             await query.answer(f"error found out\n\n{e}", show_alert=True)
             return
     
-@Client.on_callback_query(filters.regex(r"^select_lang"))
+@Client.on_callback_query(filters.regex(r"^select_lang#"))
 async def select_language(bot, query):
     _, userid = query.data.split("#")
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
@@ -511,7 +514,7 @@ async def select_language(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer()
+    await query.answer(get_flirty_interaction_message(query.from_user.id, "language_open"))
 
 @Client.on_callback_query(filters.regex(r"^year#"))
 async def year_filter(bot, query):
@@ -616,7 +619,7 @@ async def sort_search_results(bot, query):
         pass
     await query.answer()
 
-@Client.on_callback_query(filters.regex(r"^lusifilms"))
+@Client.on_callback_query(filters.regex(r"^lusifilms#"))
 async def quality_check(bot, query):
     try:
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
@@ -624,7 +627,7 @@ async def quality_check(bot, query):
         if int(userid) not in [query.from_user.id, 0]:
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if quality == "unknown":
-            return await query.answer("Sᴇʟᴇᴄᴛ ᴀɴʏ Qᴜᴀʟɪᴛʏꜱ ғʀᴏᴍ ᴛʜᴇ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴs !", show_alert=True)
+            return await query.answer("Baby, pehle apni pasand ki quality choose karo 😘", show_alert=True)
         if await is_resolution_locked(quality) and not await db.has_premium_access(query.from_user.id):
             return await query.answer(get_vip_lock_message(query.from_user.id), show_alert=True)
         movie = temp.KEYWORD.get(query.from_user.id)
@@ -711,14 +714,17 @@ async def quality_check(bot, query):
                     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 except MessageNotModified:
                     pass
-                await query.answer()
+            await query.answer(get_flirty_interaction_message(query.from_user.id, "filter_selected"))
         else:
-            return await query.answer(f"Sᴏʀʀʏ, Nᴏ ғɪʟᴇs ғᴏᴜɴᴅ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {movie}.", show_alert=True)
+            return await query.answer(
+                get_flirty_interaction_message(query.from_user.id, "no_results"),
+                show_alert=True,
+            )
     except Exception as e:
             await query.answer(f"error found out\n\n{e}", show_alert=True)
             return
 
-@Client.on_callback_query(filters.regex(r"^quality"))
+@Client.on_callback_query(filters.regex(r"^quality#"))
 async def select_quality(bot, query):
     _, userid = query.data.split("#")
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
@@ -735,11 +741,11 @@ async def select_quality(bot, query):
         InlineKeyboardButton("480p", callback_data=f"lusifilms#{userid}#480p"),
         InlineKeyboardButton("720p", callback_data=f"lusifilms#{userid}#720p")
     ],[
-        InlineKeyboardButton(high_quality_label("1080p"), callback_data=f"lusifilms#{userid}#1080p"),
-        InlineKeyboardButton(high_quality_label("1080p HQ"), callback_data=f"lusifilms#{userid}#1080p HQ")
+        InlineKeyboardButton(quality_label("1080p"), callback_data=f"lusifilms#{userid}#1080p"),
+        InlineKeyboardButton(quality_label("1080p HQ"), callback_data=f"lusifilms#{userid}#1080p HQ")
     ],[
-        InlineKeyboardButton(high_quality_label("1440p"), callback_data=f"lusifilms#{userid}#1440p"),
-        InlineKeyboardButton(high_quality_label("2160p"), callback_data=f"lusifilms#{userid}#2160p")
+        InlineKeyboardButton(quality_label("1440p"), callback_data=f"lusifilms#{userid}#1440p"),
+        InlineKeyboardButton(quality_label("2160p"), callback_data=f"lusifilms#{userid}#2160p")
     ],[
         InlineKeyboardButton("Gᴏ Bᴀᴄᴋ", callback_data=f"lusifilms#{userid}#home")
     ]]
@@ -749,17 +755,17 @@ async def select_quality(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer()
+    await query.answer(get_flirty_interaction_message(query.from_user.id, "quality_open"))
     
-@Client.on_callback_query(filters.regex(r"^seasons"))
+@Client.on_callback_query(filters.regex(r"^seasons#"))
 async def seasons_check(bot, query):
     try:
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         _, userid, seasons = query.data.split("#")
         if int(userid) not in [query.from_user.id, 0]:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if seasons == "unknown":
-            return await query.answer("Sᴇʟᴇᴄᴛ ᴀɴʏ Sᴇᴀꜱᴏɴꜱ ғʀᴏᴍ ᴛʜᴇ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴs !", show_alert=True)
+            return await query.answer("Baby, pehle apna favourite season choose karo 😘", show_alert=True)
         movie = temp.KEYWORD.get(query.from_user.id)
         if seasons != "home":
             movie = f"{movie} {seasons}"
@@ -844,19 +850,22 @@ async def seasons_check(bot, query):
                     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 except MessageNotModified:
                     pass
-                await query.answer()
+            await query.answer(get_flirty_interaction_message(query.from_user.id, "filter_selected"))
         else:
-            return await query.answer(f"Sᴏʀʀʏ, Nᴏ ғɪʟᴇs ғᴏᴜɴᴅ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {movie}.", show_alert=True)
+            return await query.answer(
+                get_flirty_interaction_message(query.from_user.id, "no_results"),
+                show_alert=True,
+            )
     except Exception as e:
             await query.answer(f"error found out\n\n{e}", show_alert=True)
             return
 
-@Client.on_callback_query(filters.regex(r"^seas"))
+@Client.on_callback_query(filters.regex(r"^seas#"))
 async def select_seasons(bot, query):
     _, userid = query.data.split("#")
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     if int(userid) not in [query.from_user.id, 0]:
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
     btn = [[
         InlineKeyboardButton("Sᴇʟᴇᴄᴛ Yᴏᴜʀ Dᴇꜱɪʀᴇᴅ Sᴇᴀꜱᴏɴꜱ ↓", callback_data=f"seasons#{userid}#unknown")
     ],[
@@ -883,10 +892,10 @@ async def select_seasons(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer()
+    await query.answer(get_flirty_interaction_message(query.from_user.id, "season_open"))
 
 
-@Client.on_callback_query(filters.regex(r"^episode"))
+@Client.on_callback_query(filters.regex(r"^episode#"))
 async def episode_check(bot, query):
     try:
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
@@ -894,7 +903,7 @@ async def episode_check(bot, query):
         if int(userid) not in [query.from_user.id, 0]:
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if episode == "unknown":
-            return await query.answer("Sᴇʟᴇᴄᴛ ᴀɴʏ ᴇᴘ ғʀᴏᴍ ᴛʜᴇ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴs !", show_alert=True)
+            return await query.answer("Jaan, pehle apna favourite episode choose karo 😉", show_alert=True)
         movie = temp.KEYWORD.get(query.from_user.id)
         if episode != "home":
             movie = f"{movie} {episode}"
@@ -979,14 +988,17 @@ async def episode_check(bot, query):
                     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 except MessageNotModified:
                     pass
-                await query.answer()
+            await query.answer(get_flirty_interaction_message(query.from_user.id, "filter_selected"))
         else:
-            return await query.answer(f"Sᴏʀʀʏ, Nᴏ ғɪʟᴇs ғᴏᴜɴᴅ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {movie}.", show_alert=True)
+            return await query.answer(
+                get_flirty_interaction_message(query.from_user.id, "no_results"),
+                show_alert=True,
+            )
     except Exception as e:
             await query.answer(f"error found out\n\n{e}", show_alert=True)
             return
             
-@Client.on_callback_query(filters.regex(r"^epi2"))
+@Client.on_callback_query(filters.regex(r"^epi2#"))
 async def select_episode2(bot, query):
     _, userid = query.data.split("#")
     if int(userid) not in [query.from_user.id, 0]:
@@ -1021,9 +1033,9 @@ async def select_episode2(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer()
+    await query.answer(get_flirty_interaction_message(query.from_user.id, "episode_open"))
     
-@Client.on_callback_query(filters.regex(r"^epi"))
+@Client.on_callback_query(filters.regex(r"^epi#"))
 async def select_episode(bot, query):
     _, userid = query.data.split("#")
     if int(userid) not in [query.from_user.id, 0]:
@@ -1058,7 +1070,7 @@ async def select_episode(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer()
+    await query.answer(get_flirty_interaction_message(query.from_user.id, "episode_open"))
 
 @Client.on_callback_query(filters.regex(r"^spol"))
 async def pm_spoll_choker(bot, query):
@@ -2023,7 +2035,9 @@ async def auto_filter(client, msg, spoll=False):
                         await st.delete()
                         return await advantage_spell_chok(client, msg)
                     else:
-                        await message.reply_text("No results found.")
+                        await message.reply_text(
+                            get_flirty_interaction_message(message.from_user.id, "no_results")
+                        )
                         return
             else:
                 return
@@ -2234,7 +2248,9 @@ async def advantage_spell_chok(client, message):
         movies = await get_poster(search, bulk=True)
     except Exception:
         logger.exception("IMDb spelling-suggestion lookup failed for query=%r", search)
-        k = await message.reply_text("No results found.")
+        k = await message.reply_text(
+            get_flirty_interaction_message(message.from_user.id, "no_results")
+        )
         await asyncio.sleep(60)
         await k.delete()
         try:
@@ -2247,7 +2263,10 @@ async def advantage_spell_chok(client, message):
         button = [[
             InlineKeyboardButton("🔍 ᴄʜᴇᴄᴋ sᴘᴇʟʟɪɴɢ ᴏɴ ɢᴏᴏɢʟᴇ 🔍", url=f"https://www.google.com/search?q={google}")
         ]]
-        k = await message.reply_text(text="No results found.", reply_markup=InlineKeyboardMarkup(button))
+        k = await message.reply_text(
+            text=get_flirty_interaction_message(message.from_user.id, "no_results"),
+            reply_markup=InlineKeyboardMarkup(button),
+        )
         await asyncio.sleep(120)
         await k.delete()
         try:
