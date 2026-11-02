@@ -85,16 +85,34 @@ def _build_search_keyboard(files, user_id, key, next_offset, total_results, sett
     return buttons
 
 
-async def _update_search_results_message(query, settings, files, search, total_results, buttons):
+async def _update_search_results_message(
+    query, settings, files, search, total_results, buttons, caption=None
+):
     markup = InlineKeyboardMarkup(buttons)
     if settings.get("button", SINGLE_BUTTON):
-        caption = await get_text(settings, "0.00", files, query, total_results, search)
+        if caption is None:
+            caption = await get_text(settings, "0.00", files, query, total_results, search)
         if query.message.photo:
             await query.message.edit_caption(caption=caption, reply_markup=markup)
         else:
             await query.message.edit_text(text=caption, reply_markup=markup)
     else:
         await query.edit_message_reply_markup(reply_markup=markup)
+
+
+async def _update_no_search_results_message(query):
+    message = get_flirty_interaction_message(query.from_user.id, "no_results")
+    try:
+        if query.message.photo:
+            await query.message.edit_caption(
+                caption=message, reply_markup=query.message.reply_markup
+            )
+        else:
+            await query.message.edit_text(
+                text=message, reply_markup=query.message.reply_markup
+            )
+    except MessageNotModified:
+        pass
 
 
 RESOLUTION_LOCK_MESSAGES = [
@@ -406,7 +424,7 @@ async def language_check(bot, query):
         if int(userid) not in [query.from_user.id, 0]:
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if language == "unknown":
-            return await query.answer("Jaan, pehle apni favourite language choose karo ❤️", show_alert=True)
+            return await query.answer()
         movie = temp.KEYWORD.get(query.from_user.id)
         if language != "home":
             movie = f"{movie} {language}"
@@ -484,7 +502,9 @@ async def language_check(bot, query):
                 remaining_seconds = "{:.2f}".format(time_difference.total_seconds())
                 cap = await get_text(settings, remaining_seconds, files, query, total_results, movie)
                 try:
-                    await query.message.edit_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
+                    await _update_search_results_message(
+                        query, settings, files, movie, total_results, btn, caption=cap
+                    )
                 except MessageNotModified:
                     pass
             else:
@@ -492,20 +512,17 @@ async def language_check(bot, query):
                     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 except MessageNotModified:
                     pass
-            await query.answer(get_flirty_interaction_message(query.from_user.id, "filter_selected"))
+            await query.answer()
         else:
-            return await query.answer(
-                get_flirty_interaction_message(query.from_user.id, "no_results"),
-                show_alert=True,
-            )
+            await _update_no_search_results_message(query)
+            return await query.answer()
     except Exception as e:
-            await query.answer(f"error found out\n\n{e}", show_alert=True)
-            return
+        logger.exception("Language filter callback failed")
+        return await query.answer("Search error aa gaya jaan, thodi der baad try karo.", show_alert=True)
     
 @Client.on_callback_query(filters.regex(r"^select_lang#"))
 async def select_language(bot, query):
     _, userid = query.data.split("#")
-    curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     if int(userid) not in [query.from_user.id, 0]:
         return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
     btn = [[
@@ -535,7 +552,7 @@ async def select_language(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer(get_flirty_interaction_message(query.from_user.id, "language_open"))
+    await query.answer()
 
 @Client.on_callback_query(filters.regex(r"^year#"))
 async def year_filter(bot, query):
@@ -648,7 +665,7 @@ async def quality_check(bot, query):
         if int(userid) not in [query.from_user.id, 0]:
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if quality == "unknown":
-            return await query.answer("Baby, pehle apni pasand ki quality choose karo 😘", show_alert=True)
+            return await query.answer()
         if await is_resolution_locked(quality) and not await db.has_premium_access(query.from_user.id):
             return await query.answer(
                 text=_get_resolution_lock_message(query.from_user.id, quality),
@@ -730,7 +747,9 @@ async def quality_check(bot, query):
                 remaining_seconds = "{:.2f}".format(time_difference.total_seconds())
                 cap = await get_text(settings, remaining_seconds, files, query, total_results, movie)
                 try:
-                    await query.message.edit_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
+                    await _update_search_results_message(
+                        query, settings, files, movie, total_results, btn, caption=cap
+                    )
                 except MessageNotModified:
                     pass
             else:
@@ -738,20 +757,17 @@ async def quality_check(bot, query):
                     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 except MessageNotModified:
                     pass
-            await query.answer(get_flirty_interaction_message(query.from_user.id, "filter_selected"))
+            await query.answer()
         else:
-            return await query.answer(
-                get_flirty_interaction_message(query.from_user.id, "no_results"),
-                show_alert=True,
-            )
+            await _update_no_search_results_message(query)
+            return await query.answer()
     except Exception as e:
-            await query.answer(f"error found out\n\n{e}", show_alert=True)
-            return
+        logger.exception("Quality filter callback failed")
+        return await query.answer("Search error aa gaya jaan, thodi der baad try karo.", show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^quality#"))
 async def select_quality(bot, query):
     _, userid = query.data.split("#")
-    curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     if int(userid) not in [query.from_user.id, 0]:
         return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
     resolution_lock = await db.get_setting("RESOLUTION_LOCK", default=True)
@@ -779,7 +795,7 @@ async def select_quality(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer(get_flirty_interaction_message(query.from_user.id, "quality_open"))
+    await query.answer()
     
 @Client.on_callback_query(filters.regex(r"^seasons#"))
 async def seasons_check(bot, query):
@@ -789,7 +805,7 @@ async def seasons_check(bot, query):
         if int(userid) not in [query.from_user.id, 0]:
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if seasons == "unknown":
-            return await query.answer("Baby, pehle apna favourite season choose karo 😘", show_alert=True)
+            return await query.answer()
         movie = temp.KEYWORD.get(query.from_user.id)
         if seasons != "home":
             movie = f"{movie} {seasons}"
@@ -866,7 +882,9 @@ async def seasons_check(bot, query):
                 remaining_seconds = "{:.2f}".format(time_difference.total_seconds())
                 cap = await get_text(settings, remaining_seconds, files, query, total_results, movie)
                 try:
-                    await query.message.edit_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
+                    await _update_search_results_message(
+                        query, settings, files, movie, total_results, btn, caption=cap
+                    )
                 except MessageNotModified:
                     pass
             else:
@@ -874,20 +892,17 @@ async def seasons_check(bot, query):
                     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 except MessageNotModified:
                     pass
-            await query.answer(get_flirty_interaction_message(query.from_user.id, "filter_selected"))
+            await query.answer()
         else:
-            return await query.answer(
-                get_flirty_interaction_message(query.from_user.id, "no_results"),
-                show_alert=True,
-            )
+            await _update_no_search_results_message(query)
+            return await query.answer()
     except Exception as e:
-            await query.answer(f"error found out\n\n{e}", show_alert=True)
-            return
+        logger.exception("Season filter callback failed")
+        return await query.answer("Search error aa gaya jaan, thodi der baad try karo.", show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^seas#"))
 async def select_seasons(bot, query):
     _, userid = query.data.split("#")
-    curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     if int(userid) not in [query.from_user.id, 0]:
         return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
     btn = [[
@@ -916,7 +931,7 @@ async def select_seasons(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer(get_flirty_interaction_message(query.from_user.id, "season_open"))
+    await query.answer()
 
 
 @Client.on_callback_query(filters.regex(r"^episode#"))
@@ -927,7 +942,7 @@ async def episode_check(bot, query):
         if int(userid) not in [query.from_user.id, 0]:
             return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if episode == "unknown":
-            return await query.answer("Jaan, pehle apna favourite episode choose karo 😉", show_alert=True)
+            return await query.answer()
         movie = temp.KEYWORD.get(query.from_user.id)
         if episode != "home":
             movie = f"{movie} {episode}"
@@ -1004,7 +1019,9 @@ async def episode_check(bot, query):
                 remaining_seconds = "{:.2f}".format(time_difference.total_seconds())
                 cap = await get_text(settings, remaining_seconds, files, query, total_results, movie)
                 try:
-                    await query.message.edit_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
+                    await _update_search_results_message(
+                        query, settings, files, movie, total_results, btn, caption=cap
+                    )
                 except MessageNotModified:
                     pass
             else:
@@ -1012,15 +1029,13 @@ async def episode_check(bot, query):
                     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 except MessageNotModified:
                     pass
-            await query.answer(get_flirty_interaction_message(query.from_user.id, "filter_selected"))
+            await query.answer()
         else:
-            return await query.answer(
-                get_flirty_interaction_message(query.from_user.id, "no_results"),
-                show_alert=True,
-            )
+            await _update_no_search_results_message(query)
+            return await query.answer()
     except Exception as e:
-            await query.answer(f"error found out\n\n{e}", show_alert=True)
-            return
+        logger.exception("Episode filter callback failed")
+        return await query.answer("Search error aa gaya jaan, thodi der baad try karo.", show_alert=True)
             
 @Client.on_callback_query(filters.regex(r"^epi2#"))
 async def select_episode2(bot, query):
@@ -1057,7 +1072,7 @@ async def select_episode2(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer(get_flirty_interaction_message(query.from_user.id, "episode_open"))
+    await query.answer()
     
 @Client.on_callback_query(filters.regex(r"^epi#"))
 async def select_episode(bot, query):
@@ -1094,7 +1109,7 @@ async def select_episode(bot, query):
        )
     except MessageNotModified:
         pass
-    await query.answer(get_flirty_interaction_message(query.from_user.id, "episode_open"))
+    await query.answer()
 
 @Client.on_callback_query(filters.regex(r"^spol"))
 async def pm_spoll_choker(bot, query):
