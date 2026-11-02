@@ -68,6 +68,11 @@ MULTIPLE_DATABASES = environ.get('MULTIPLE_DATABASES', '')
 MULTIDB_STORAGE_THRESHOLD = float(environ.get('MULTIDB_STORAGE_THRESHOLD', '90.0'))
 MULTIDB_QUOTA_MB = float(environ.get('MULTIDB_QUOTA_MB', '512.0'))
 
+# Premium Group/Channel Subscription Manager (Feature 4)
+VIP_GROUP_ID = environ.get('VIP_GROUP_ID', '-1002244316214')
+VIP_CHANNEL1_ID = environ.get('VIP_CHANNEL1_ID', '-1002148604082')
+VIP_CHANNEL2_ID = environ.get('VIP_CHANNEL2_ID', '-1002023191399')
+
 #stream link shortner
 STREAM_SITE = (environ.get('STREAM_SITE', 'sharedisklinks.com'))
 STREAM_API = (environ.get('STREAM_API', '587f94f0e0b1813a52aed61290af6ea79d6ee464'))

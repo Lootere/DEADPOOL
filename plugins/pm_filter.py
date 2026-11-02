@@ -2009,8 +2009,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     InlineKeyboardButton('🍀 Hᴇʟᴘ 🍀', callback_data='help'),
                     InlineKeyboardButton('🤖 ᴀʙᴏᴜᴛ 🤖', callback_data='about')
                 ],[
-                    InlineKeyboardButton('🆓 ᴘʀᴇᴍɪᴜᴍ ✨', callback_data="pm_reff"),
-                    InlineKeyboardButton('✨ ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ ✨', callback_data="premium_info")
+                    InlineKeyboardButton('★ ᴘʀᴇᴍɪᴜᴍ ʜᴜʙ ★', callback_data="premium_hub")
                  ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(
@@ -2020,6 +2019,90 @@ async def cb_handler(client: Client, query: CallbackQuery):
             reply_markup,
         )
         await query.answer(MSG_ALRT)
+
+    elif query.data == "premium_hub":
+        from Lootere.utils.subscription_manager import build_premium_hub_keyboard
+        hub_text = (
+            "<b>★ PREMIUM HUB ★</b>\n\n"
+            "<i>Explore our premium offerings:</i>\n\n"
+            "• <b>BOT PREMIUM:</b> Unlimited instant searches, lightning fast files, and priority streaming.\n"
+            "• <b>VIP DESTINATIONS:</b> Direct access to private Telegram VIP movie & series channels & groups.\n"
+            "• <b>FREE TRIAL & REFERRALS:</b> Invite friends to earn free bot access.\n"
+            "• <b>MY ACTIVE PLANS:</b> View your active subscriptions, expiry dates & private invite links.\n\n"
+            "<i>Select an option below to proceed:</i>"
+        )
+        reply_markup = build_premium_hub_keyboard()
+        await _edit_help_page(client, query, hub_text, reply_markup)
+        await query.answer()
+
+    elif query.data == "dest_plans":
+        from Lootere.utils.subscription_manager import (
+            subscription_manager,
+            format_dest_plans_text,
+            build_dest_plans_keyboard,
+        )
+        plans = subscription_manager.dest_mgr.list_plans()
+        destinations = subscription_manager.dest_mgr._destinations
+        text = format_dest_plans_text(plans, destinations)
+        reply_markup = build_dest_plans_keyboard(owner_username=OWNER_USER_NAME)
+        await _edit_help_page(client, query, text, reply_markup)
+        await query.answer()
+
+    elif query.data == "my_plans_hub":
+        from Lootere.utils.subscription_manager import (
+            subscription_manager,
+            format_my_plans_text,
+            build_my_plans_keyboard,
+        )
+        user_id = query.from_user.id
+        bot_user = await db.get_user(user_id)
+        dest_sub = await subscription_manager.get_subscription(user_id)
+        destinations = subscription_manager.dest_mgr._destinations
+        text = format_my_plans_text(bot_user, dest_sub, destinations)
+        has_dest = bool(dest_sub and dest_sub.get("status") == "active")
+        reply_markup = build_my_plans_keyboard(has_dest_sub=has_dest)
+        await _edit_help_page(client, query, text, reply_markup)
+        await query.answer()
+
+    elif query.data == "dest_invites":
+        from Lootere.utils.subscription_manager import subscription_manager
+        user_id = query.from_user.id
+        dest_sub = await subscription_manager.get_subscription(user_id)
+        if not dest_sub or dest_sub.get("status") != "active":
+            await query.answer("You do not have an active VIP destination subscription.", show_alert=True)
+            return
+
+        invites = await subscription_manager.get_or_create_user_invites(client, user_id)
+        if not invites:
+            text = (
+                "<b>VIP INVITE LINKS</b>\n\n"
+                "No active destinations found for your plan or links could not be generated at this time.\n"
+                "Please contact admin."
+            )
+            buttons = [
+                [InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub")],
+                [InlineKeyboardButton("BACK TO HOME", callback_data="start")],
+            ]
+        else:
+            text = (
+                "<b>YOUR PRIVATE VIP INVITE LINKS</b>\n\n"
+                "<i>Note: These links are one-time single-member links generated exclusively for your Telegram account. Do not share them!</i>\n\n"
+            )
+            buttons = []
+            for item in invites:
+                dest_name = item.get("destination_name", "VIP Channel")
+                link = item.get("invite_link")
+                if link:
+                    buttons.append([InlineKeyboardButton(f"JOIN {dest_name.upper()}", url=link)])
+                    text += f"• <b>{dest_name}</b>: Ready to join\n"
+            buttons.append([
+                InlineKeyboardButton("MY ACTIVE PLANS", callback_data="my_plans_hub"),
+                InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub"),
+            ])
+            buttons.append([InlineKeyboardButton("BACK TO HOME", callback_data="start")])
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await _edit_help_page(client, query, text, reply_markup)
+        await query.answer()
         
     elif query.data == 'features':
         buttons = [[

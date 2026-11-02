@@ -12,6 +12,7 @@ from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 async def check_expired_premium(client):
+    last_dest_check = 0.0
     while 1:
         data = await db.get_expired(datetime.now())
         
@@ -33,6 +34,17 @@ async def check_expired_premium(client):
             except Exception as e:
                 pass
             await sleep(0.5)
+
+        # Feature 4: Reconcile VIP Destination subscriptions & send expiry reminders
+        now_ts = datetime.now().timestamp()
+        if now_ts - last_dest_check >= 60.0:
+            last_dest_check = now_ts
+            try:
+                from Lootere.utils.subscription_manager import subscription_manager
+                await subscription_manager.reconcile_expiries_and_reminders(client)
+            except Exception:
+                pass
+
         await sleep(1)
 	    
 @Client.on_message(filters.command("remove_premium") & filters.user(ADMINS))
@@ -172,6 +184,336 @@ async def plan(client, message):
         reply_markup=InlineKeyboardMarkup(btn),
         parse_mode="html",
     )
-    
-# This code has been modified by @Looteredev
-# Please do not remove this credit
+
+
+# ======================================================================
+# Feature 4: Premium Hub + VIP Destination Subscriptions (Admin & User)
+# ======================================================================
+
+import logging
+logger = logging.getLogger(__name__)
+IST = pytz.timezone("Asia/Kolkata")
+
+
+@Client.on_message(filters.command("dest_list") & filters.user(ADMINS))
+async def list_destinations_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    dests = subscription_manager.dest_mgr.list_destinations()
+    if not dests:
+        return await message.reply_text("<b>No VIP destinations configured.</b>\nUse /dest_add to add one.")
+    lines = ["<b>VIP DESTINATIONS LIST</b>\n"]
+    for d in dests:
+        status_icon = "ACTIVE" if d.get("status") == "active" else "DISABLED"
+        lines.append(
+            f"• <b>{d.get('name')}</b> (<code>{d.get('id')}</code>)\n"
+            f"  ├ <b>Type:</b> <code>{d.get('type')}</code>\n"
+            f"  ├ <b>Chat ID:</b> <code>{d.get('chat_id')}</code>\n"
+            f"  └ <b>Status:</b> <code>{status_icon}</code>\n"
+        )
+    lines.append("<i>Commands: /dest_add, /dest_del, /dest_toggle, /dest_test</i>")
+    await message.reply_text("\n".join(lines))
+
+
+@Client.on_message(filters.command("dest_add") & filters.user(ADMINS))
+async def add_destination_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) < 4:
+        return await message.reply_text(
+            "<b>Usage:</b> <code>/dest_add &lt;group|channel&gt; &lt;chat_id&gt; &lt;name&gt;</code>\n"
+            "<b>Example:</b> <code>/dest_add channel -1002148604082 VIP Movies</code>"
+        )
+    dest_type = message.command[1].lower()
+    if dest_type not in ["group", "channel"]:
+        return await message.reply_text("Destination type must be either 'group' or 'channel'.")
+    try:
+        chat_id = int(message.command[2])
+    except ValueError:
+        return await message.reply_text("Invalid chat_id. Must be integer (e.g. -100...).")
+    name = " ".join(message.command[3:])
+    dest_id = f"dest_{dest_type}_{abs(chat_id)}"
+
+    success, msg = await subscription_manager.dest_mgr.add_destination(
+        dest_id=dest_id, name=name, chat_id=chat_id, dest_type=dest_type
+    )
+    perm_test = await subscription_manager.test_destination_permissions(client, dest_id)
+    if not perm_test.get("success"):
+        msg += f"\n\n<b>Warning:</b> Bot could not verify permissions in chat ({perm_test.get('error')}). Please ensure bot is admin with invite & ban rights."
+    await message.reply_text(msg)
+
+
+@Client.on_message(filters.command("dest_del") & filters.user(ADMINS))
+async def del_destination_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> <code>/dest_del &lt;dest_id&gt;</code>")
+    dest_id = message.command[1]
+    success, msg = await subscription_manager.dest_mgr.remove_destination(dest_id)
+    await message.reply_text(msg)
+
+
+@Client.on_message(filters.command("dest_toggle") & filters.user(ADMINS))
+async def toggle_destination_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> <code>/dest_toggle &lt;dest_id&gt;</code>")
+    dest_id = message.command[1]
+    success, msg = await subscription_manager.dest_mgr.toggle_destination(dest_id)
+    await message.reply_text(msg)
+
+
+@Client.on_message(filters.command("dest_test") & filters.user(ADMINS))
+async def test_destination_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> <code>/dest_test &lt;dest_id&gt;</code>")
+    dest_id = message.command[1]
+    res = await subscription_manager.test_destination_permissions(client, dest_id)
+    if not res.get("success"):
+        return await message.reply_text(f"<b>Failed to test destination:</b> {res.get('error')}")
+    await message.reply_text(
+        f"<b>DESTINATION PERMISSIONS REPORT</b>\n\n"
+        f"• <b>Destination:</b> <code>{dest_id}</code>\n"
+        f"• <b>Chat ID:</b> <code>{res.get('chat_id')}</code>\n"
+        f"• <b>Bot Status:</b> <code>{res.get('status')}</code>\n"
+        f"• <b>Can Invite Users:</b> <code>{'YES' if res.get('can_invite_users') else 'NO'}</code>\n"
+        f"• <b>Can Ban/Remove Members:</b> <code>{'YES' if res.get('can_restrict_members') else 'NO'}</code>"
+    )
+
+
+@Client.on_message(filters.command("vip_plan_list") & filters.user(ADMINS))
+async def list_vip_plans_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    plans = subscription_manager.dest_mgr.list_plans()
+    if not plans:
+        return await message.reply_text("No VIP plans configured. Use /vip_plan_add.")
+    lines = ["<b>VIP PLANS LIST</b>\n"]
+    for p in plans:
+        dests = ", ".join(p.get("destinations", []))
+        lines.append(
+            f"• <b>{p.get('name')}</b> (<code>{p.get('id')}</code>)\n"
+            f"  ├ <b>Destinations:</b> <code>{dests}</code>\n"
+            f"  ├ <b>Duration:</b> <code>{p.get('duration_days')} Days</code>\n"
+            f"  └ <b>Price:</b> <code>{p.get('price')}</code>\n"
+        )
+    await message.reply_text("\n".join(lines))
+
+
+@Client.on_message(filters.command("vip_plan_add") & filters.user(ADMINS))
+async def add_vip_plan_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) < 5:
+        return await message.reply_text(
+            "<b>Usage:</b> <code>/vip_plan_add &lt;plan_id&gt; &lt;duration_days&gt; &lt;dest_ids_comma_separated&gt; &lt;price&gt; &lt;plan_name&gt;</code>\n"
+            "<b>Example:</b> <code>/vip_plan_add gold 30 dest_group1,dest_channel1 ₹199/month Gold VIP</code>"
+        )
+    plan_id = message.command[1].lower()
+    try:
+        duration_days = int(message.command[2])
+    except ValueError:
+        return await message.reply_text("duration_days must be an integer.")
+    dest_ids = [d.strip() for d in message.command[3].split(",") if d.strip()]
+    price = message.command[4]
+    plan_name = " ".join(message.command[5:]) if len(message.command) > 5 else plan_id.title()
+
+    success, msg = await subscription_manager.dest_mgr.add_plan(
+        plan_id=plan_id,
+        name=plan_name,
+        destination_ids=dest_ids,
+        duration_days=duration_days,
+        price=price,
+    )
+    await message.reply_text(msg)
+
+
+@Client.on_message(filters.command("vip_plan_del") & filters.user(ADMINS))
+async def del_vip_plan_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> <code>/vip_plan_del &lt;plan_id&gt;</code>")
+    plan_id = message.command[1]
+    success, msg = await subscription_manager.dest_mgr.remove_plan(plan_id)
+    await message.reply_text(msg)
+
+
+@Client.on_message(filters.command("vip_add") & filters.user(ADMINS))
+async def vip_add_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) < 3:
+        return await message.reply_text(
+            "<b>Usage:</b> <code>/vip_add &lt;user_id&gt; &lt;plan_id&gt; [duration_days]</code>\n"
+            "<b>Example:</b> <code>/vip_add 123456789 gold 30</code>"
+        )
+    try:
+        user_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("Invalid user_id.")
+    plan_id = message.command[2].lower()
+    plan = subscription_manager.dest_mgr.get_plan(plan_id)
+    if not plan:
+        return await message.reply_text(f"Plan '{plan_id}' does not exist. Check /vip_plan_list.")
+    duration_days = int(message.command[3]) if len(message.command) > 3 else plan.get("duration_days", 30)
+
+    success, msg, sub = await subscription_manager.activate_subscription(
+        user_id=user_id,
+        plan_id=plan_id,
+        duration_days=duration_days,
+        admin_id=message.from_user.id,
+    )
+    if not success:
+        return await message.reply_text(f"Failed: {msg}")
+
+    # Generate fresh invites for user
+    await subscription_manager.generate_user_invites(client, user_id)
+
+    # Notify admin
+    await message.reply_text(f"<b>VIP Subscription Activated</b>\n\n{msg}")
+
+    # Notify user with button to view links
+    try:
+        btn = InlineKeyboardMarkup([[
+            InlineKeyboardButton("VIEW INVITE LINKS", callback_data="dest_invites")
+        ]])
+        await client.send_message(
+            chat_id=user_id,
+            text=(
+                f"<b>VIP Community Membership Activated!</b>\n\n"
+                f"• <b>Plan:</b> {plan.get('name')}\n"
+                f"• <b>Duration:</b> {duration_days} Days\n"
+                f"• <b>Expiry:</b> {sub['expiry_time'].strftime('%d-%m-%Y %I:%M %p')} IST\n\n"
+                f"Click the button below to access your unique private channel & group invite links."
+            ),
+            reply_markup=btn,
+        )
+    except Exception as e:
+        await message.reply_text(f"<b>Notice:</b> Could not DM user {user_id}: {e}")
+
+    # Log to PREMIUM_LOGS
+    try:
+        await client.send_message(
+            PREMIUM_LOGS,
+            f"<b>#VIP_DESTINATION_ADDED</b>\n\n"
+            f"• <b>User ID:</b> <code>{user_id}</code>\n"
+            f"• <b>Plan:</b> {plan.get('name')}\n"
+            f"• <b>Duration:</b> {duration_days} Days\n"
+            f"• <b>Admin:</b> {message.from_user.mention}"
+        )
+    except Exception:
+        pass
+
+
+@Client.on_message(filters.command("vip_renew") & filters.user(ADMINS))
+async def vip_renew_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) < 2:
+        return await message.reply_text(
+            "<b>Usage:</b> <code>/vip_renew &lt;user_id&gt; [duration_days]</code>\n"
+            "<b>Note:</b> Only admin-approved renewals extend or restore subscriptions."
+        )
+    try:
+        user_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("Invalid user_id.")
+    days = int(message.command[2]) if len(message.command) > 2 else None
+
+    success, msg, sub = await subscription_manager.renew_subscription(
+        user_id=user_id, duration_days=days, admin_id=message.from_user.id
+    )
+    if not success:
+        return await message.reply_text(f"Failed: {msg}")
+
+    await message.reply_text(f"<b>VIP Renewal Approved</b>\n\n{msg}")
+
+    try:
+        btn = InlineKeyboardMarkup([[
+            InlineKeyboardButton("VIEW INVITE LINKS", callback_data="dest_invites")
+        ]])
+        await client.send_message(
+            chat_id=user_id,
+            text=(
+                f"<b>VIP Membership Renewed!</b>\n\n"
+                f"Admin has approved your renewal.\n"
+                f"• <b>New Expiry:</b> {sub['expiry_time'].strftime('%d-%m-%Y %I:%M %p')} IST"
+            ),
+            reply_markup=btn,
+        )
+    except Exception:
+        pass
+
+
+@Client.on_message(filters.command("vip_remove") & filters.user(ADMINS))
+async def vip_remove_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> <code>/vip_remove &lt;user_id&gt;</code>")
+    try:
+        user_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("Invalid user_id.")
+
+    sub = await subscription_manager.get_user_subscription(user_id)
+    if not sub:
+        return await message.reply_text(f"No subscription found for user {user_id}.")
+
+    dest_ids = sub.get("destinations", [])
+    for dest_id in dest_ids:
+        dest = subscription_manager.dest_mgr.get_destination(dest_id)
+        if dest and client:
+            try:
+                await client.ban_chat_member(dest["chat_id"], user_id)
+                await client.unban_chat_member(dest["chat_id"], user_id)
+            except Exception as e:
+                logger.error(f"Failed to remove user {user_id} from {dest_id}: {e}")
+
+    await subscription_manager.cancel_subscription(user_id)
+    await message.reply_text(f"User {user_id} VIP membership cancelled and removed from destinations.")
+
+    try:
+        await client.send_message(
+            chat_id=user_id,
+            text="<b>VIP Access Cancelled</b>\n\nYour VIP group/channel membership has been revoked by admin."
+        )
+    except Exception:
+        pass
+
+
+@Client.on_message(filters.command("vip_users") & filters.user(ADMINS))
+async def vip_users_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    subs = await subscription_manager.list_all_active_subscriptions()
+    if not subs:
+        return await message.reply_text("No active VIP destination subscribers.")
+
+    now = datetime.now(IST)
+    lines = ["<b>ACTIVE VIP SUBSCRIBERS</b>\n"]
+    for i, s in enumerate(subs, 1):
+        uid = s.get("user_id")
+        plan_name = s.get("plan_name", "VIP")
+        exp = s.get("expiry_time")
+        if exp and exp.tzinfo is None:
+            exp = IST.localize(exp)
+        if exp and exp > now:
+            diff = exp - now
+            time_left = f"{diff.days}d {diff.seconds // 3600}h"
+        else:
+            time_left = "Expired"
+        exp_str = exp.strftime("%d-%m-%Y") if exp else "Unknown"
+        lines.append(f"{i}. User <code>{uid}</code> | {plan_name} | Left: {time_left} (Exp: {exp_str})")
+
+    await message.reply_text("\n".join(lines))
+
+
+@Client.on_message(filters.command("myvip"))
+async def myvip_cmd(client, message):
+    from Lootere.utils.subscription_manager import (
+        subscription_manager,
+        format_my_plans_text,
+        build_my_plans_keyboard,
+    )
+    user_id = message.from_user.id
+    dest_sub = await subscription_manager.get_subscription(user_id)
+    destinations = subscription_manager.dest_mgr._destinations
+    text = format_my_plans_text(None, dest_sub, destinations)
+    has_sub = bool(dest_sub and dest_sub.get("status") == "active")
+    reply_markup = build_my_plans_keyboard(has_dest_sub=has_sub)
+    await message.reply_text(text, reply_markup=reply_markup, parse_mode="html")
+

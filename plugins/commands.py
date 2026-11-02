@@ -250,8 +250,7 @@ async def start(client, message):
                         InlineKeyboardButton('🍀 Hᴇʟᴘ 🍀', callback_data='help'),
                         InlineKeyboardButton('🤖 ᴀʙᴏᴜᴛ 🤖', callback_data='about')
                     ],[
-                        InlineKeyboardButton('🆓 ᴘʀᴇᴍɪᴜᴍ', callback_data="pm_reff"), 
-                        InlineKeyboardButton('✨ ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ ✨', callback_data="premium_info")
+                        InlineKeyboardButton('★ ᴘʀᴇᴍɪᴜᴍ ʜᴜʙ ★', callback_data="premium_hub")
                     ]]
             sponsor_button = await get_sponsor_button()
             if sponsor_button:

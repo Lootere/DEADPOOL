@@ -348,6 +348,17 @@ Money heist S0E01
 • /add_db &lt;uri&gt; - <code>ᴀᴅᴅ ᴀ ɴᴇᴡ ᴍᴏɴɢᴏᴅʙ ᴄʟᴜsᴛᴇʀ</code>
 • /del_db &lt;id&gt; - <code>ᴅɪsᴄᴏɴɴᴇᴄᴛ ᴀ sᴇᴄᴏɴᴅᴀʀʏ ᴄʟᴜsᴛᴇʀ</code>
 • /test_db - <code>ᴛᴇsᴛ ʟᴀᴛᴇɴᴄʏ ᴏғ ᴀʟʟ ᴄʟᴜsᴛᴇʀs</code>
+• /dest_list - <code>ᴠɪᴇᴡ ᴀʟʟ ᴠɪᴘ ɢʀᴏᴜᴘs & ᴄʜᴀɴɴᴇʟs</code>
+• /dest_add &lt;group|channel&gt; &lt;chat_id&gt; &lt;name&gt; - <code>ᴀᴅᴅ ᴠɪᴘ ᴅᴇsᴛɪɴᴀᴛɪᴏɴ</code>
+• /dest_del &lt;dest_id&gt; - <code>ʀᴇᴍᴏᴠᴇ ᴠɪᴘ ᴅᴇsᴛɪɴᴀᴛɪᴏɴ</code>
+• /dest_toggle &lt;dest_id&gt; - <code>ᴇɴᴀʙʟᴇ / ᴅɪsᴀʙʟᴇ ᴅᴇsᴛɪɴᴀᴛɪᴏɴ</code>
+• /dest_test &lt;dest_id&gt; - <code>ᴛᴇsᴛ ʙᴏᴛ ᴘᴇʀᴍɪssɪᴏɴs ɪɴ ᴄʜᴀᴛ</code>
+• /vip_plan_list - <code>ʟɪsᴛ ᴠɪᴘ ᴅᴇsᴛɪɴᴀᴛɪᴏɴ ᴘʟᴀɴs</code>
+• /vip_plan_add &lt;id&gt; &lt;days&gt; &lt;dest_ids&gt; &lt;price&gt; &lt;name&gt; - <code>ᴄᴏɴғɪɢᴜʀᴇ ᴠɪᴘ ᴘʟᴀɴ</code>
+• /vip_add &lt;user_id&gt; &lt;plan_id&gt; &lt;days&gt; - <code>ᴀᴄᴛɪᴠᴀᴛᴇ ᴜsᴇʀ ᴠɪᴘ sᴜʙsᴄʀɪᴘᴛɪᴏɴ</code>
+• /vip_renew &lt;user_id&gt; [days] - <code>ʀᴇɴᴇᴡ ᴜsᴇʀ ᴠɪᴘ sᴜʙsᴄʀɪᴘᴛɪᴏɴ</code>
+• /vip_remove &lt;user_id&gt; - <code>ʀᴇᴠᴏᴋᴇ ᴠɪᴘ ᴀɴᴅ ʀᴇᴍᴏᴠᴇ ғʀᴏᴍ ᴄʜᴀᴛs</code>
+• /vip_users - <code>ʟɪsᴛ ᴀʟʟ ᴀᴄᴛɪᴠᴇ ᴠɪᴘ sᴜʙsᴄʀɪʙᴇʀs</code>
 """
     
     PREMIUM_CMD = """<b>

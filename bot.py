@@ -14,7 +14,7 @@ from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
 from database.ia_filterdb import Media
 from database.users_chats_db import db
-from info import SESSION, API_ID, API_HASH, BOT_TOKEN, LOG_STR, LOG_CHANNEL, PORT, BIN_CHANNEL, ON_HEROKU
+from info import SESSION, API_ID, API_HASH, BOT_TOKEN, LOG_STR, LOG_CHANNEL, PORT, BIN_CHANNEL, ON_HEROKU, VIP_GROUP_ID, VIP_CHANNEL1_ID, VIP_CHANNEL2_ID
 from typing import Union, Optional, AsyncGenerator
 from pyrogram import types
 from Script import script 
@@ -69,6 +69,16 @@ async def start():
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
     await Media.ensure_indexes()
+    try:
+        from Lootere.utils.subscription_manager import subscription_manager
+        subscription_manager.set_db(getattr(db, "db", None))
+        await subscription_manager.dest_mgr.initialize(
+            default_group_id=VIP_GROUP_ID,
+            default_channel1_id=VIP_CHANNEL1_ID,
+            default_channel2_id=VIP_CHANNEL2_ID,
+        )
+    except Exception as e:
+        logging.error(f"Failed to initialize subscription_manager: {e}")
     me = await LootereBot.get_me()
     temp.ME = me.id
     temp.U_NAME = me.username
