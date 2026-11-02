@@ -38,6 +38,7 @@ from Lootere.utils.search_ui_style import (
     edit_styled_reply_markup,
     sync_bot_api_reply_markup,
 )
+from Lootere.utils.smart_search_engine import format_smart_search_file_blocks
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -2624,16 +2625,28 @@ async def auto_filter(
                 cap = script.IMDB_TEMPLATE_TXT.format(query=search, **imdb)
             temp.IMDB_CAP[message.from_user.id] = cap
             if settings.get("button", SINGLE_BUTTON):
-                for file in files:
-                    cap += f"<b>\n\n<a href='https://telegram.me/{temp.U_NAME}?start=files_{message.chat.id}_{file.file_id}'> 📁 {get_size(file.file_size)} ▷ {file.file_name}</a></b>"
+                smart_blocks = await format_smart_search_file_blocks(
+                    files,
+                    chat_id=message.chat.id,
+                    bot_username=temp.U_NAME,
+                    settings=settings,
+                    db_instance=db,
+                )
+                if smart_blocks:
+                    cap += f"\n\n{smart_blocks}"
         else:
             CAPTION = f"<b>☠️ ᴛɪᴛʟᴇ : <code>{search}</code>\n📂 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ : <code>{total_results}</code>\n📝 ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ : {message.from_user.first_name}\n⏰ ʀᴇsᴜʟᴛ ɪɴ : <code>{remaining_seconds} Sᴇᴄᴏɴᴅs</code>\n\n📚 Your Requested Files 👇\n\n</b>"
             if not settings.get("button", SINGLE_BUTTON):
                 cap = f"{CAPTION}"
             else:
-                cap = f"{CAPTION}"
-                for file in files:
-                    cap += f"<b><a href='https://telegram.me/{temp.U_NAME}?start=files_{message.chat.id}_{file.file_id}'> 📁 {get_size(file.file_size)} ▷ {file.file_name}\n\n</a></b>"
+                smart_blocks = await format_smart_search_file_blocks(
+                    files,
+                    chat_id=message.chat.id,
+                    bot_username=temp.U_NAME,
+                    settings=settings,
+                    db_instance=db,
+                )
+                cap = f"{CAPTION}{smart_blocks}\n\n" if smart_blocks else f"{CAPTION}"
 
         stage = "sending search results"
         if imdb and imdb.get('poster'):  

@@ -29,6 +29,14 @@ from info import *
 from .pm_filter import auto_filter
 from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked, get_auto_delete_label, get_sponsor_button, is_valid_sponsor_button, get_premium_plans, format_premium_plans, is_valid_premium_plan, get_start_message, is_valid_welcome_message, get_search_strictness, SEARCH_STRICTNESS_LEVELS
 from database.connections_mdb import active_connection
+from Lootere.utils.smart_search_engine import (
+    STYLE_NAMES,
+    cancel_pending_style_preview,
+    confirm_pending_style_preview,
+    get_smart_style_config,
+    select_smart_text_style,
+    set_style_preview_enabled,
+)
 import re
 import json
 import base64
@@ -2117,3 +2125,297 @@ async def set_mode(client, message):
             await message.reply("Please specify the mode name and 'True' or 'False'. Example: /set_value RESOLUTION_LOCK False")
     except Exception as e:
         await message.reply(f"An error occurred: {e}")
+
+
+def _build_smart_style_dashboard_text(config):
+    movie_id = config["movie_style"]
+    series_id = config["series_style"]
+    preview_on = config["preview_enabled"]
+    return (
+        "<b>🎨 Smart Search Result Style Settings</b>\n\n"
+        f"🎬 <b>Movie Text Style:</b> <code>{movie_id} — {STYLE_NAMES[movie_id]}</code>\n"
+        f"📺 <b>Series Text Style:</b> <code>{series_id} — {STYLE_NAMES[series_id]}</code>\n"
+        f"👁 <b>Preview Before Apply:</b> <code>{'ON' if preview_on else 'OFF'}</code>\n\n"
+        "<i>Note: Delivery mode (Link / Button) is a separate setting in /settings.</i>"
+    )
+
+
+def _build_smart_style_dashboard_keyboard(config):
+    movie_id = config["movie_style"]
+    series_id = config["series_style"]
+    preview_on = config["preview_enabled"]
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                f"🎬 Movie: {movie_id}. {STYLE_NAMES[movie_id]}",
+                callback_data="smartstyle#pick#movie",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"📺 Series: {series_id}. {STYLE_NAMES[series_id]}",
+                callback_data="smartstyle#pick#series",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"👁 Preview Before Apply: {'✔ ON' if preview_on else '✘ OFF'}",
+                callback_data="smartstyle#toggle_preview",
+            )
+        ],
+        [InlineKeyboardButton("🚫 Close", callback_data="close_data")],
+    ])
+
+
+def _build_style_picker_keyboard(category, active_style_id):
+    rows = []
+    pair = []
+    for style_id, style_name in STYLE_NAMES.items():
+        marker = "✓ " if style_id == active_style_id else ""
+        pair.append(
+            InlineKeyboardButton(
+                f"{marker}{style_id}. {style_name}",
+                callback_data=f"smartstyle#select#{category}#{style_id}",
+            )
+        )
+        if len(pair) == 2:
+            rows.append(pair)
+            pair = []
+    if pair:
+        rows.append(pair)
+    rows.append([InlineKeyboardButton("⬅ Back", callback_data="smartstyle#menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+@Client.on_message(filters.command(["search_style", "result_style"]))
+async def smart_search_style_menu(client, message):
+    actor_id = message.from_user.id if message.from_user else None
+    if not _is_bot_admin(actor_id):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    config = await get_smart_style_config(db_instance=db)
+    await message.reply_text(
+        _build_smart_style_dashboard_text(config),
+        reply_markup=_build_smart_style_dashboard_keyboard(config),
+        parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
+@Client.on_message(filters.command(["movie_style", "set_movie_style"]))
+async def set_movie_style_command(client, message):
+    actor_id = message.from_user.id if message.from_user else None
+    if not _is_bot_admin(actor_id):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        styles_list = "\n".join(f"<code>{sid}</code> — {sname}" for sid, sname in STYLE_NAMES.items())
+        return await message.reply_text(
+            f"<b>Usage:</b> <code>/movie_style &lt;1-10&gt;</code>\n\n{styles_list}",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    try:
+        outcome = await select_smart_text_style(actor_id, "movie", parts[1], db_instance=db)
+    except ValueError as err:
+        return await message.reply_text(str(err))
+
+    if outcome["status"] == "preview_pending":
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "✅ Apply",
+                    callback_data=f"smartstyle#apply#movie#{outcome['candidate_style_id']}",
+                ),
+                InlineKeyboardButton(
+                    "❌ Cancel",
+                    callback_data="smartstyle#cancel#movie",
+                ),
+            ]
+        ])
+        return await message.reply_text(
+            f"<b>👁 Preview — Movie Style {outcome['candidate_style_id']} ({outcome['candidate_style_name']})</b>\n"
+            f"<i>Current active style: {outcome['active_style_id']} ({outcome['active_style_name']})</i>\n\n"
+            f"{outcome['preview_html']}",
+            reply_markup=kb,
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+
+    await message.reply_text(
+        f"✅ Movie text style updated to <b>{outcome['active_style_id']} — {outcome['active_style_name']}</b>\n\n"
+        f"{outcome['preview_html']}",
+        parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
+@Client.on_message(filters.command(["series_style", "set_series_style"]))
+async def set_series_style_command(client, message):
+    actor_id = message.from_user.id if message.from_user else None
+    if not _is_bot_admin(actor_id):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        styles_list = "\n".join(f"<code>{sid}</code> — {sname}" for sid, sname in STYLE_NAMES.items())
+        return await message.reply_text(
+            f"<b>Usage:</b> <code>/series_style &lt;1-10&gt;</code>\n\n{styles_list}",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    try:
+        outcome = await select_smart_text_style(actor_id, "series", parts[1], db_instance=db)
+    except ValueError as err:
+        return await message.reply_text(str(err))
+
+    if outcome["status"] == "preview_pending":
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "✅ Apply",
+                    callback_data=f"smartstyle#apply#series#{outcome['candidate_style_id']}",
+                ),
+                InlineKeyboardButton(
+                    "❌ Cancel",
+                    callback_data="smartstyle#cancel#series",
+                ),
+            ]
+        ])
+        return await message.reply_text(
+            f"<b>👁 Preview — Series Style {outcome['candidate_style_id']} ({outcome['candidate_style_name']})</b>\n"
+            f"<i>Current active style: {outcome['active_style_id']} ({outcome['active_style_name']})</i>\n\n"
+            f"{outcome['preview_html']}",
+            reply_markup=kb,
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+
+    await message.reply_text(
+        f"✅ Series text style updated to <b>{outcome['active_style_id']} — {outcome['active_style_name']}</b>\n\n"
+        f"{outcome['preview_html']}",
+        parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
+@Client.on_message(filters.command("search_style_preview"))
+async def toggle_search_style_preview_command(client, message):
+    actor_id = message.from_user.id if message.from_user else None
+    if not _is_bot_admin(actor_id):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or parts[1].strip().lower() not in ("on", "off", "true", "false"):
+        return await message.reply_text("Format: <code>/search_style_preview on|off</code>", parse_mode=enums.ParseMode.HTML)
+    enabled = parts[1].strip().lower() in ("on", "true")
+    saved = await set_style_preview_enabled(enabled, db_instance=db)
+    await message.reply_text(
+        f"✅ Preview Before Apply set to <b>{'ON' if saved['preview_enabled'] else 'OFF'}</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_callback_query(filters.regex(r"^smartstyle#"))
+async def smart_style_callback_handler(client, query):
+    actor_id = query.from_user.id if query.from_user else None
+    if not _is_bot_admin(actor_id):
+        return await query.answer("Sirf bot admins ke liye hai 👑", show_alert=True)
+
+    parts = query.data.split("#")
+    action = parts[1] if len(parts) > 1 else "menu"
+
+    if action == "menu":
+        config = await get_smart_style_config(db_instance=db)
+        await query.message.edit_text(
+            _build_smart_style_dashboard_text(config),
+            reply_markup=_build_smart_style_dashboard_keyboard(config),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+        return await query.answer()
+
+    if action == "toggle_preview":
+        config = await get_smart_style_config(db_instance=db)
+        updated = await set_style_preview_enabled(not config["preview_enabled"], db_instance=db)
+        await query.message.edit_text(
+            _build_smart_style_dashboard_text(updated),
+            reply_markup=_build_smart_style_dashboard_keyboard(updated),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+        return await query.answer(
+            f"Preview Before Apply: {'ON' if updated['preview_enabled'] else 'OFF'}"
+        )
+
+    if action == "pick" and len(parts) >= 3:
+        category = parts[2].lower()
+        config = await get_smart_style_config(db_instance=db)
+        active_id = config["series_style"] if category == "series" else config["movie_style"]
+        label = "Series" if category == "series" else "Movie"
+        await query.message.edit_text(
+            f"<b>🎨 Select {label} Text Style (1–10)</b>\n"
+            f"Current: <code>{active_id} — {STYLE_NAMES[active_id]}</code>",
+            reply_markup=_build_style_picker_keyboard(category, active_id),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+        return await query.answer()
+
+    if action == "select" and len(parts) >= 4:
+        category = parts[2].lower()
+        style_id = int(parts[3])
+        outcome = await select_smart_text_style(actor_id, category, style_id, db_instance=db)
+        label = "Series" if category == "series" else "Movie"
+        if outcome["status"] == "preview_pending":
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "✅ Apply",
+                        callback_data=f"smartstyle#apply#{category}#{outcome['candidate_style_id']}",
+                    ),
+                    InlineKeyboardButton(
+                        "❌ Cancel",
+                        callback_data=f"smartstyle#cancel#{category}",
+                    ),
+                ]
+            ])
+            await query.message.edit_text(
+                f"<b>👁 Preview — {label} Style {outcome['candidate_style_id']} ({outcome['candidate_style_name']})</b>\n"
+                f"<i>Current active style: {outcome['active_style_id']} ({outcome['active_style_name']})</i>\n\n"
+                f"{outcome['preview_html']}",
+                reply_markup=kb,
+                parse_mode=enums.ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+            return await query.answer("Preview ready! Click Apply to save or Cancel to keep old style.")
+
+        config = await get_smart_style_config(db_instance=db)
+        await query.message.edit_text(
+            _build_smart_style_dashboard_text(config),
+            reply_markup=_build_smart_style_dashboard_keyboard(config),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+        return await query.answer(f"{label} style updated to {outcome['active_style_name']}!")
+
+    if action == "apply" and len(parts) >= 4:
+        category = parts[2].lower()
+        style_id = int(parts[3])
+        applied = await confirm_pending_style_preview(
+            actor_id, db_instance=db, category=category, style_id=style_id
+        )
+        config = applied["config"]
+        await query.message.edit_text(
+            _build_smart_style_dashboard_text(config),
+            reply_markup=_build_smart_style_dashboard_keyboard(config),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+        return await query.answer("New style applied!")
+
+    if action == "cancel":
+        cancelled = await cancel_pending_style_preview(actor_id, db_instance=db)
+        config = cancelled["config"]
+        await query.message.edit_text(
+            _build_smart_style_dashboard_text(config),
+            reply_markup=_build_smart_style_dashboard_keyboard(config),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+        return await query.answer("Preview cancelled. Previous style kept unchanged.")

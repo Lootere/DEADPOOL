@@ -27,6 +27,7 @@ import requests
 import aiohttp
 from shortzy import Shortzy
 from urllib.parse import urlsplit
+from Lootere.utils.smart_search_engine import format_smart_search_file_blocks
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -647,13 +648,20 @@ async def get_users():
 
 async def get_text(settings, remaining_seconds, files, query, total_results, search):
     try:
+        smart_blocks = await format_smart_search_file_blocks(
+            files,
+            chat_id=query.message.chat.id,
+            bot_username=temp.U_NAME,
+            settings=settings,
+            db_instance=db,
+        )
         if settings["imdb"]:
             IMDB_CAP = temp.IMDB_CAP.get(query.from_user.id)
             CAPTION = f"☠️ ᴛɪᴛʟᴇ : <code>{search}</code>\n📂 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ : <code>{total_results}</code>\n📝 ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ : {query.from_user.first_name}\n⏰ ʀᴇsᴜʟᴛ ɪɴ : <code>{remaining_seconds} Sᴇᴄᴏɴᴅs</code>\n\n</b>"
             if IMDB_CAP:
                 cap = IMDB_CAP
-                for file in files: #shortlink = false, imdb = true
-                    cap += f"\n\n<b><a href='https://telegram.me/{temp.U_NAME}?start=files_{query.message.chat.id}_{file.file_id}'>📁 {get_size(file.file_size)} ▷ {file.file_name}</a></b>"
+                if smart_blocks:
+                    cap += f"\n\n{smart_blocks}"
             else:
                 imdb = await get_poster(search, file=(files[0]).file_name) if settings["imdb"] else None
                 if imdb:
@@ -689,20 +697,19 @@ async def get_text(settings, remaining_seconds, files, query, total_results, sea
                         url=imdb['url'],
                         **locals()
                     )
-                    for file in files:
-                        cap += f"\n\n<b><a href='https://telegram.me/{temp.U_NAME}?start=files_{query.message.chat.id}_{file.file_id}'>📁 {get_size(file.file_size)} ▷ {file.file_name}</a></b>"
+                    if smart_blocks:
+                        cap += f"\n\n{smart_blocks}"
                 else:
                     cap = f"{CAPTION}" #imdb = false
-                    cap+="<b>📚 <u>Your Requested Files</u> 👇\n\n</b>"
-                    for file in files:
-                        cap += f"<b><a href='https://telegram.me/{temp.U_NAME}?start=files_{query.message.chat.id}_{file.file_id}'>📁 {get_size(file.file_size)} ▷ {file.file_name}\n\n</a></b>"
-    
+                    cap += "<b>📚 <u>Your Requested Files</u> 👇\n\n</b>"
+                    if smart_blocks:
+                        cap += f"{smart_blocks}\n\n"
         else:
             #imdb = false
             cap = f"☠️ ᴛɪᴛʟᴇ : <code>{search}</code>\n📂 ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ : <code>{total_results}</code>\n📝 ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ : {query.from_user.first_name}\n⏰ ʀᴇsᴜʟᴛ ɪɴ : <code>{remaining_seconds}\n\n</b>"
-            cap+="<b>📚 <u>Your Requested Files</u> 👇\n\n</b>"
-            for file in files:
-                cap += f"<b><a href='https://telegram.me/{temp.U_NAME}?start=files_{query.message.chat.id}_{file.file_id}'>📁 {get_size(file.file_size)} ▷ {file.file_name}\n\n</a></b>"
+            cap += "<b>📚 <u>Your Requested Files</u> 👇\n\n</b>"
+            if smart_blocks:
+                cap += f"{smart_blocks}\n\n"
         return cap
     except Exception as e:
         await query.answer(f"{e}", show_alert=True)
