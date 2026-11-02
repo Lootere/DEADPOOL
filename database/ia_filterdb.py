@@ -209,10 +209,10 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
             for banned_word in banned_words:
                 pattern = re.compile(re.escape(banned_word), re.IGNORECASE)
                 file['file_name'] = pattern.sub('', file['file_name']).strip()
-            file['file_name'] = _clean_display_file_name(file.get('file_name'))
+            file['file_name'] = _clean_display_file_name(file['file_name'])
 
         if sort_by == "season":
-            files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
+            files.sort(key=lambda file: _season_sort_key(file['file_name']))
     except Exception:
         logger.exception(
             "Media search failed during %s (collection=%s, chat_id=%s, query=%r)",
@@ -264,8 +264,8 @@ async def get_bad_files(query, file_type=None, filter=False):
     # Get list of files
     files = await cursor.to_list(length=total_results)
     for file in files:
-        file['file_name'] = _clean_display_file_name(file.get('file_name'))
-    files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
+        file['file_name'] = _clean_display_file_name(file['file_name'])
+    files.sort(key=lambda file: _season_sort_key(file['file_name']))
 
     return files, total_results
 
