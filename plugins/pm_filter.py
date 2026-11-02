@@ -780,6 +780,9 @@ async def sort_search_results(bot, query):
         "recent": "Nᴀʏᴀ Pᴇʜʟᴇ",
         "title": "Tɪᴛʟᴇ A–Z",
         "size": "Bᴀᴅɪ Fɪʟᴇ Pᴇʜʟᴇ",
+        "size_asc": "Cʜᴏᴛɪ Fɪʟᴇ Pᴇʜʟᴇ",
+        "quality": "Qᴜᴀʟɪᴛʏ Hɪɢʜ → Lᴏᴡ",
+        "language": "Lᴀɴɢᴜᴀɢᴇ A–Z",
     }
     if len(parts) == 2:
         buttons = [[

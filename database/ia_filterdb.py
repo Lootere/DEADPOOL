@@ -30,6 +30,27 @@ SEARCH_RESULTS_CACHE_TTL = 60
 SEARCH_RESULTS_CACHE_MAX_ENTRIES = 256
 SEARCH_RESULTS_CACHE_GENERATION = 0
 
+QUALITY_SORT_PATTERNS = (
+    (6, r"(?:^|[\s._+\-])(?:2160\s*p|4\s*k|uhd)(?=$|[\s._+\-])"),
+    (5, r"(?:^|[\s._+\-])1440\s*p(?=$|[\s._+\-])"),
+    (4, r"(?:^|[\s._+\-])1080\s*p(?=$|[\s._+\-])"),
+    (3, r"(?:^|[\s._+\-])720\s*p(?=$|[\s._+\-])"),
+    (2, r"(?:^|[\s._+\-])480\s*p(?=$|[\s._+\-])"),
+)
+LANGUAGE_SORT_PATTERNS = (
+    (1, r"(?:^|[\s._+\-])dual[\s._+\-]*audio(?=$|[\s._+\-])"),
+    (2, r"(?:^|[\s._+\-])(?:eng|english)(?=$|[\s._+\-])"),
+    (3, r"(?:^|[\s._+\-])(?:guj|gujarati)(?=$|[\s._+\-])"),
+    (4, r"(?:^|[\s._+\-])(?:hin|hindi)(?=$|[\s._+\-])"),
+    (5, r"(?:^|[\s._+\-])(?:kan|kannada)(?=$|[\s._+\-])"),
+    (6, r"(?:^|[\s._+\-])(?:mal|malayalam)(?=$|[\s._+\-])"),
+    (7, r"(?:^|[\s._+\-])(?:mar|marathi)(?=$|[\s._+\-])"),
+    (8, r"(?:^|[\s._+\-])multi[\s._+\-]*audio(?=$|[\s._+\-])"),
+    (9, r"(?:^|[\s._+\-])(?:pun|punjabi)(?=$|[\s._+\-])"),
+    (10, r"(?:^|[\s._+\-])(?:tam|tamil)(?=$|[\s._+\-])"),
+    (11, r"(?:^|[\s._+\-])(?:tel|telugu)(?=$|[\s._+\-])"),
+)
+
 
 def clear_search_results_cache():
     global SEARCH_RESULTS_CACHE_GENERATION
@@ -116,6 +137,27 @@ def _season_sort_key(file_name):
         episode = int(episode_match.group(1)) if episode_match else 9999
         is_season_pack = 0 if season_match and not episode_match else 1
     return (is_season_pack, season, episode, text)
+
+
+def _metadata_sort_expression(patterns, default_rank):
+    return {
+        "$switch": {
+            "branches": [
+                {
+                    "case": {
+                        "$regexMatch": {
+                            "input": {"$ifNull": ["$file_name", ""]},
+                            "regex": pattern,
+                            "options": "i",
+                        }
+                    },
+                    "then": rank,
+                }
+                for rank, pattern in patterns
+            ],
+            "default": default_rank,
+        }
+    }
 
 
 def _search_term_pattern(term):
@@ -451,6 +493,9 @@ async def get_search_results(
         "recent": ("$natural", -1),
         "title": ("file_name", 1),
         "size": ("file_size", -1),
+        "size_asc": ("file_size", 1),
+        "quality": None,
+        "language": None,
     }
     if sort_by not in sort_fields:
         raise ValueError(f"Unsupported search sort option: {sort_by}")
@@ -527,10 +572,49 @@ async def get_search_results(
             next_offset = ''
 
         operation = "retrieving result page"
-        cursor = Media.find(mongo_filter)
-        cursor.sort(*sort_fields[sort_by])
-        cursor.skip(offset).limit(max_results)
-        files = await cursor.to_list(length=max_results)
+        if sort_by in ("quality", "language"):
+            rank_expression = _metadata_sort_expression(
+                QUALITY_SORT_PATTERNS if sort_by == "quality" else LANGUAGE_SORT_PATTERNS,
+                0 if sort_by == "quality" else 99,
+            )
+            pipeline = [
+                {"$match": mongo_filter},
+                {"$addFields": {"_smart_sort_rank": rank_expression}},
+                {
+                    "$sort": {
+                        "_smart_sort_rank": -1 if sort_by == "quality" else 1,
+                        "file_name": 1,
+                        "_id": 1,
+                    }
+                },
+                {"$skip": offset},
+                {"$limit": max_results},
+                {
+                    "$project": {
+                        "_id": 0,
+                        "file_id": "$_id",
+                    }
+                },
+            ]
+            ranked_ids = await Media.collection.aggregate(pipeline).to_list(
+                length=max_results
+            )
+            file_ids = [document["file_id"] for document in ranked_ids]
+            cursor = Media.find({"file_id": {"$in": file_ids}})
+            files_by_id = {
+                file.file_id: file
+                for file in await cursor.to_list(length=max_results)
+            }
+            files = [
+                files_by_id[file_id]
+                for file_id in file_ids
+                if file_id in files_by_id
+            ]
+        else:
+            cursor = Media.find(mongo_filter)
+            cursor.sort(*sort_fields[sort_by])
+            cursor.skip(offset).limit(max_results)
+            files = await cursor.to_list(length=max_results)
         logger.info(
             "Media search page retrieved (collection=%s, query=%r, retrieved=%s, offset=%s, page_size=%s)",
             COLLECTION_NAME,
