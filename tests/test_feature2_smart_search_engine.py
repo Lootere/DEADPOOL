@@ -294,6 +294,152 @@ class TestFeature2SmartSearchEngine(unittest.TestCase):
 
         asyncio.run(_run_workflow())
 
+    def test_no_circular_import_across_ia_filterdb_utils_and_lootere_utils(self):
+        import importlib
+        import sys
+        import types
+        from unittest.mock import MagicMock, patch
+
+        class _DummyModule(types.ModuleType):
+            def __getattr__(self, name):
+                if name.startswith("__"):
+                    raise AttributeError(name)
+                attr = MagicMock()
+                setattr(self, name, attr)
+                return attr
+
+        stub_names = [
+            "pyrogram",
+            "pyrogram.file_id",
+            "pyrogram.errors",
+            "pyrogram.errors.exceptions",
+            "pyrogram.errors.exceptions.bad_request_400",
+            "pyrogram.types",
+            "pyrogram.enums",
+            "pyrogram.raw",
+            "pyrogram.raw.all",
+            "pyrogram.raw.types",
+            "pyrogram.raw.types.messages",
+            "pyrogram.session",
+            "pymongo",
+            "pymongo.errors",
+            "umongo",
+            "motor",
+            "motor.motor_asyncio",
+            "marshmallow",
+            "marshmallow.exceptions",
+            "fuzzywuzzy",
+            "imdb",
+            "pytz",
+            "bs4",
+            "requests",
+            "aiohttp",
+            "aiohttp.web",
+            "shortzy",
+            "dotenv",
+            "telegram",
+        ]
+        stubs = {}
+        for mod_name in stub_names:
+            mod = _DummyModule(mod_name)
+            stubs[mod_name] = mod
+
+        # Provide base classes needed at class-definition time
+        stubs["pyrogram"].Client = type(
+            "Client",
+            (),
+            {
+                "__init__": lambda self, *a, **kw: None,
+                "on_message": staticmethod(lambda *a, **kw: (lambda fn: fn)),
+                "on_callback_query": staticmethod(lambda *a, **kw: (lambda fn: fn)),
+            },
+        )
+        stubs["umongo"].Document = type("Document", (), {})
+        instance_mock = MagicMock()
+        instance_mock.register = lambda cls: cls
+        stubs["umongo"].Instance.from_db = MagicMock(return_value=instance_mock)
+
+        target_modules = [
+            "info",
+            "Script",
+            "utils",
+            "database",
+            "database.users_chats_db",
+            "database.ia_filterdb",
+            "database.connections_mdb",
+            "database.Lootere_reffer",
+            "Lootere",
+            "Lootere.utils",
+            "Lootere.utils.smart_search_engine",
+            "Lootere.utils.search_ui_style",
+            "Lootere.utils.clients",
+            "Lootere.utils.keepalive",
+            "plugins.pm_filter",
+            "plugins.commands",
+        ]
+
+        import_orders = [
+            # Exact Render bot.py startup order + plugins
+            [
+                "database.ia_filterdb",
+                "database.users_chats_db",
+                "utils",
+                "Lootere.utils",
+                "Lootere.utils.keepalive",
+                "Lootere.utils.clients",
+                "Lootere.utils.smart_search_engine",
+                "Lootere.utils.search_ui_style",
+                "plugins.pm_filter",
+                "plugins.commands",
+            ],
+            # utils first
+            [
+                "utils",
+                "database.ia_filterdb",
+                "Lootere.utils.smart_search_engine",
+                "Lootere.utils",
+            ],
+            # Lootere.utils first
+            [
+                "Lootere.utils",
+                "Lootere.utils.smart_search_engine",
+                "database.ia_filterdb",
+                "utils",
+            ],
+        ]
+
+        import os
+
+        env_vars = {
+            "API_ID": "12345",
+            "API_HASH": "0123456789abcdef0123456789abcdef",
+            "BOT_TOKEN": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+        }
+
+        with patch.dict(os.environ, env_vars), patch.dict(sys.modules, stubs):
+            for order in import_orders:
+                for mod_name in target_modules:
+                    sys.modules.pop(mod_name, None)
+                for mod_name in order:
+                    mod = importlib.import_module(mod_name)
+                    self.assertIsNotNone(mod)
+                ia_filterdb = sys.modules["database.ia_filterdb"]
+                utils_mod = sys.modules["utils"]
+                lootere_utils = sys.modules["Lootere.utils"]
+                smart_engine = sys.modules["Lootere.utils.smart_search_engine"]
+
+                self.assertTrue(hasattr(ia_filterdb, "Media"))
+                self.assertTrue(hasattr(utils_mod, "get_settings"))
+                self.assertTrue(hasattr(utils_mod, "save_group_settings"))
+                self.assertTrue(hasattr(utils_mod, "get_text"))
+                self.assertTrue(hasattr(lootere_utils, "LootereBot"))
+                self.assertIs(lootere_utils.Media, ia_filterdb.Media)
+                self.assertIs(lootere_utils.temp, utils_mod.temp)
+                self.assertTrue(hasattr(smart_engine, "format_smart_search_file_blocks"))
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+

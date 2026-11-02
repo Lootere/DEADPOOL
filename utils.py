@@ -27,7 +27,6 @@ import requests
 import aiohttp
 from shortzy import Shortzy
 from urllib.parse import urlsplit
-from Lootere.utils.smart_search_engine import format_smart_search_file_blocks
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -648,6 +647,8 @@ async def get_users():
 
 async def get_text(settings, remaining_seconds, files, query, total_results, search):
     try:
+        from Lootere.utils.smart_search_engine import format_smart_search_file_blocks
+
         smart_blocks = await format_smart_search_file_blocks(
             files,
             chat_id=query.message.chat.id,

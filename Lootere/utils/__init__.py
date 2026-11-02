@@ -12,15 +12,21 @@ logging.getLogger("aiohttp").setLevel(logging.ERROR)
 logging.getLogger("aiohttp.web").setLevel(logging.ERROR)
 
 from pyrogram import Client
-from database.ia_filterdb import Media
 from info import *
-from utils import temp
 from typing import Union, Optional, AsyncGenerator
 from pyrogram import types
 from aiohttp import web
 
-from pyrogram import Client
-from info import *
+
+def __getattr__(name: str):
+    if name == "Media":
+        from database.ia_filterdb import Media
+        return Media
+    if name == "temp":
+        from utils import temp
+        return temp
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 class LootereXBot(Client):
 
