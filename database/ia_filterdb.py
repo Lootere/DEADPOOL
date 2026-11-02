@@ -14,7 +14,11 @@ from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
 from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
-from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN
+from info import (
+    DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN,
+    DATABASE_URI2, DATABASE_URI3, DATABASE_URI4, DATABASE_URI5, MULTIPLE_DATABASES,
+    MULTIDB_STORAGE_THRESHOLD, MULTIDB_QUOTA_MB,
+)
 from utils import get_settings, save_group_settings
 from fuzzywuzzy import process
 from Script import script
@@ -475,10 +479,49 @@ class Media(Document):
         collection_name = COLLECTION_NAME
 
 
-async def save_file(media):
-    """Save file in database"""
+# Feature 3: Multi-MongoDB Storage Manager Adapter Initialization
+from Lootere.utils.multidb_manager import multi_db_manager, MultiDBMediaDocument, mask_mongo_uri
 
-    # TODO: Find better way to get same file_id for same media to avoid duplicates
+_secondary_uris = []
+for _u in (DATABASE_URI2, DATABASE_URI3, DATABASE_URI4, DATABASE_URI5):
+    if _u and _u.strip():
+        _secondary_uris.append(_u.strip())
+if MULTIPLE_DATABASES:
+    for _u in re.split(r'[,;\s]+', MULTIPLE_DATABASES.strip()):
+        if _u and _u.strip() and _u.strip() not in _secondary_uris and _u.strip() != DATABASE_URI:
+            _secondary_uris.append(_u.strip())
+
+multi_db_manager.initialize(
+    primary_uri=DATABASE_URI,
+    primary_db_name=DATABASE_NAME,
+    primary_collection_name=COLLECTION_NAME,
+    primary_client=client,
+    secondary_uris=_secondary_uris,
+    threshold_percent=MULTIDB_STORAGE_THRESHOLD,
+    quota_mb=MULTIDB_QUOTA_MB,
+)
+
+
+async def save_file(media):
+    """Save file in database with Multi-MongoDB support and legacy single-DB compatibility."""
+    if multi_db_manager.has_multiple_active_dbs():
+        check_dup_fn = None
+        try:
+            from Lootere.utils.duplicate_cleaner import should_auto_skip_exact_duplicate
+            check_dup_fn = should_auto_skip_exact_duplicate
+        except Exception:
+            pass
+        success, fid = await multi_db_manager.save_media_file(
+            media,
+            unpack_fn=unpack_new_file_id,
+            clean_name_fn=lambda name: re.sub(r"(_|\-|\.|\+)", " ", str(name)),
+            check_dup_fn=check_dup_fn,
+        )
+        if success:
+            clear_search_results_cache()
+        return success, fid
+
+    # Legacy Single DB write (100% untouched)
     file_id, file_ref = unpack_new_file_id(media.file_id)
     file_name = re.sub(r"(_|\-|\.|\+)", " ", str(media.file_name))
 
@@ -600,6 +643,23 @@ async def get_search_results(
             query,
             filters or {},
         )
+
+        if multi_db_manager.has_multiple_active_dbs():
+            operation = "multi-database searching and merging"
+            files, next_offset, total_results = await multi_db_manager.search_media(
+                mongo_filter=mongo_filter,
+                sort_fields=sort_fields,
+                sort_by=sort_by,
+                offset=offset,
+                max_results=max_results,
+                banned_words=banned_words,
+                clean_display_fn=_clean_display_file_name,
+                season_sort_fn=_season_sort_key if sort_by == "season" else None,
+            )
+            search_results = (files, next_offset, total_results)
+            _cache_search_results(cache_key, search_results)
+            return search_results
+
         operation = "counting matching documents"
         total_results = await Media.count_documents(mongo_filter)
         logger.info(
@@ -738,6 +798,9 @@ async def get_file_details(query):
         filter = {'file_id': query}
         cursor = Media.find(filter)
         filedetails = await cursor.to_list(length=1)
+        if not filedetails and multi_db_manager.has_multiple_active_dbs():
+            filedetails = await multi_db_manager.get_file_details(query)
+            
         if filedetails:
             file = filedetails[0]
             original_file_name = getattr(file, 'file_name', '')
@@ -751,7 +814,7 @@ async def get_file_details(query):
             setattr(file, 'file_name', modified_file_name)
         return filedetails
     except Exception as e:
-        logging.error("An error occurred:", exc_info=True)
+        logger.error(f"An error occurred in get_file_details: {e}", exc_info=True)
         return None
 
 def encode_file_id(s: bytes) -> str:
@@ -789,3 +852,17 @@ def unpack_new_file_id(new_file_id):
     )
     file_ref = encode_file_ref(decoded.file_reference)
     return file_id, file_ref
+
+
+__all__ = [
+    'Media',
+    'save_file',
+    'get_file_details',
+    'get_search_results',
+    'get_bad_files',
+    'get_all_files',
+    'clear_search_results_cache',
+    'unpack_new_file_id',
+    'multi_db_manager',
+    'mask_mongo_uri',
+]

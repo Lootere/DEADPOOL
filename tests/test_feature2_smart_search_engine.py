@@ -372,6 +372,7 @@ class TestFeature2SmartSearchEngine(unittest.TestCase):
             "Lootere.utils",
             "Lootere.utils.smart_search_engine",
             "Lootere.utils.search_ui_style",
+            "Lootere.utils.multidb_manager",
             "Lootere.utils.clients",
             "Lootere.utils.keepalive",
             "plugins.pm_filter",

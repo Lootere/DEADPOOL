@@ -25,6 +25,11 @@ def __getattr__(name: str):
     if name == "temp":
         from utils import temp
         return temp
+    import importlib
+    try:
+        return importlib.import_module(f".{name}", __name__)
+    except Exception:
+        pass
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

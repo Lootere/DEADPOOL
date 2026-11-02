@@ -59,6 +59,15 @@ DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://Rahul:Rahul@cluster0.p
 DATABASE_NAME = environ.get('DATABASE_NAME', "Cluster0")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'Rkmovieszip')
 
+# Multi-MongoDB Storage Manager Configurations (Feature 3)
+DATABASE_URI2 = environ.get('DATABASE_URI2', '')
+DATABASE_URI3 = environ.get('DATABASE_URI3', '')
+DATABASE_URI4 = environ.get('DATABASE_URI4', '')
+DATABASE_URI5 = environ.get('DATABASE_URI5', '')
+MULTIPLE_DATABASES = environ.get('MULTIPLE_DATABASES', '')
+MULTIDB_STORAGE_THRESHOLD = float(environ.get('MULTIDB_STORAGE_THRESHOLD', '90.0'))
+MULTIDB_QUOTA_MB = float(environ.get('MULTIDB_QUOTA_MB', '512.0'))
+
 #stream link shortner
 STREAM_SITE = (environ.get('STREAM_SITE', 'sharedisklinks.com'))
 STREAM_API = (environ.get('STREAM_API', '587f94f0e0b1813a52aed61290af6ea79d6ee464'))

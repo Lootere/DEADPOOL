@@ -2525,3 +2525,228 @@ async def duplicate_cleaner_callback(client: Client, query: CallbackQuery):
         kb = _build_duplicate_cleaner_keyboard(preview["session_id"], next_mode, preview["total_duplicates"])
         await query.message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
         return await query.answer(f"Duplicate mode set to: {next_mode.title()}")
+
+
+# =========================================================================
+# Feature 3: Multi-MongoDB Storage Manager Admin Controls & Interactive UI
+# =========================================================================
+from Lootere.utils.multidb_manager import (
+    multi_db_manager,
+    mask_mongo_uri,
+    format_multidb_dashboard_text,
+    build_multidb_main_keyboard,
+    build_multidb_switch_target_keyboard,
+    build_multidb_toggle_keyboard,
+)
+
+
+@Client.on_message(filters.command(["multidb", "dbstatus"]) & filters.private)
+async def multidb_status_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+
+    report = await multi_db_manager.get_full_status_report()
+    text = format_multidb_dashboard_text(report)
+    keyboard = build_multidb_main_keyboard()
+    await message.reply_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+
+
+@Client.on_message(filters.command(["add_db", "adddb"]) & filters.private)
+async def add_database_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+
+    args = message.text.split()[1:]
+    if not args:
+        return await message.reply_text(
+            "<b>Usage:</b> <code>/add_db &lt;mongo_uri&gt; [name] [priority]</code>\n\n"
+            "<i>Example:</i> <code>/add_db mongodb+srv://user:pass@cluster2.mongodb.net Cluster-2 80</code>"
+        )
+
+    uri = args[0].strip()
+    name = args[1].strip() if len(args) > 1 else f"Secondary DB {len(multi_db_manager.nodes) + 1}"
+    priority = int(args[2].strip()) if len(args) > 2 and args[2].isdigit() else 80
+
+    node_id = f"db{len(multi_db_manager.nodes) + 1}"
+    node = multi_db_manager.register_database(
+        node_id=node_id,
+        name=name,
+        uri=uri,
+        db_name=multi_db_manager.nodes.get("primary", node).db_name if multi_db_manager.nodes else "Cluster0",
+        collection_name=multi_db_manager.nodes.get("primary", node).collection_name if multi_db_manager.nodes else "Rkmovieszip",
+        is_enabled=True,
+        priority=priority,
+    )
+    
+    masked = mask_mongo_uri(uri)
+    await message.reply_text(
+        f"<b>Database Added Successfully!</b>\n\n"
+        f"• <b>ID:</b> <code>{node_id}</code>\n"
+        f"• <b>Name:</b> <code>{name}</code>\n"
+        f"• <b>URI:</b> <code>{masked}</code>\n"
+        f"• <b>Priority:</b> <code>{priority}</code>\n"
+        f"• <b>Status:</b> <code>ENABLED (ON)</code>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command(["del_db", "deldb"]) & filters.private)
+async def remove_database_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+
+    args = message.text.split()[1:]
+    if not args:
+        return await message.reply_text("<b>Usage:</b> <code>/del_db &lt;db_id&gt;</code>")
+
+    node_id = args[0].strip().lower()
+    success, msg = await multi_db_manager.remove_database(node_id)
+    await message.reply_text(f"<b>{msg}</b>", parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_message(filters.command(["switch_db", "switchdb"]) & filters.private)
+async def switch_database_target_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+
+    args = message.text.split()[1:]
+    if not args:
+        return await message.reply_text("<b>Usage:</b> <code>/switch_db &lt;db_id&gt;</code>")
+
+    node_id = args[0].strip().lower()
+    success, msg = multi_db_manager.set_active_target(node_id)
+    await message.reply_text(f"<b>{msg}</b>", parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_message(filters.command(["toggle_db", "toggledb"]) & filters.private)
+async def toggle_database_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+
+    args = message.text.split()[1:]
+    if not args:
+        return await message.reply_text("<b>Usage:</b> <code>/toggle_db &lt;db_id&gt; [on/off]</code>")
+
+    node_id = args[0].strip().lower()
+    node = multi_db_manager.get_node(node_id)
+    if not node:
+        return await message.reply_text(f"<b>Database node <code>{node_id}</code> not found.</b>")
+
+    if len(args) > 1:
+        new_state = args[1].strip().lower() in ("on", "true", "1", "enable")
+    else:
+        new_state = not node.is_enabled
+
+    success, msg = multi_db_manager.set_enabled(node_id, new_state)
+    await message.reply_text(f"<b>{msg}</b>", parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_message(filters.command(["set_db_priority", "setpriority"]) & filters.private)
+async def set_priority_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+
+    args = message.text.split()[1:]
+    if len(args) < 2 or not args[1].isdigit():
+        return await message.reply_text("<b>Usage:</b> <code>/set_db_priority &lt;db_id&gt; &lt;priority_number&gt;</code>")
+
+    node_id = args[0].strip().lower()
+    priority = int(args[1].strip())
+    success, msg = multi_db_manager.set_priority(node_id, priority)
+    await message.reply_text(f"<b>{msg}</b>", parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_message(filters.command(["test_db", "testdb"]) & filters.private)
+async def test_database_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+
+    status_msg = await message.reply_text("<b>Testing database latency... Please wait.</b>")
+    results = await multi_db_manager.test_all_connections()
+    lines = ["<b>Database Connection Health:</b>\n"]
+    for nid, res in results.items():
+        name = res.get("name")
+        healthy = res.get("is_healthy")
+        latency = res.get("latency_ms")
+        err = res.get("error")
+        lat_str = f"<code>{latency}ms</code>" if healthy else f"<code>Failed ({err})</code>"
+        lines.append(f"• <b>{name}</b> (<code>{nid}</code>): {lat_str}")
+    await status_msg.edit_text("\n".join(lines), parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_callback_query(filters.regex(r"^multidb#"))
+async def multidb_callback_handler(client: Client, query: CallbackQuery):
+    actor_id = query.from_user.id
+    if not _is_bot_admin(actor_id):
+        return await query.answer("This setting can only be modified by Bot Admins.", show_alert=True)
+
+    data = query.data or ""
+    parts = data.split("#")
+    action = parts[1] if len(parts) > 1 else ""
+
+    if action == "close":
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.answer("Closed.")
+
+    if action == "main":
+        report = await multi_db_manager.get_full_status_report()
+        text = format_multidb_dashboard_text(report)
+        keyboard = build_multidb_main_keyboard()
+        await query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+        return await query.answer("Refreshed.")
+
+    if action == "test_all":
+        await query.answer("Testing all connections...", show_alert=False)
+        await multi_db_manager.test_all_connections()
+        report = await multi_db_manager.get_full_status_report()
+        text = format_multidb_dashboard_text(report)
+        keyboard = build_multidb_main_keyboard()
+        await query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+        return await query.answer("Latency tested.")
+
+    if action == "switch_menu":
+        report = await multi_db_manager.get_full_status_report()
+        kb = build_multidb_switch_target_keyboard(report.get("nodes", []))
+        await query.message.edit_text(
+            "<b>Select the cluster you wish to designate as the Active Indexing Target:</b>\n\n"
+            "<i>All new indexed files will be routed to this cluster.</i>",
+            reply_markup=kb,
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return await query.answer()
+
+    if action == "set_target":
+        target_id = parts[2] if len(parts) > 2 else "primary"
+        success, msg = multi_db_manager.set_active_target(target_id)
+        await query.answer(msg, show_alert=True)
+        report = await multi_db_manager.get_full_status_report()
+        text = format_multidb_dashboard_text(report)
+        keyboard = build_multidb_main_keyboard()
+        await query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+        return
+
+    if action == "toggle_menu":
+        report = await multi_db_manager.get_full_status_report()
+        kb = build_multidb_toggle_keyboard(report.get("nodes", []))
+        await query.message.edit_text(
+            "<b>Select a cluster to toggle participation (ON / OFF):</b>\n\n"
+            "<i>Turning OFF excludes the cluster from search reads and new indexing without deleting any records.</i>",
+            reply_markup=kb,
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return await query.answer()
+
+    if action == "toggle_state":
+        target_id = parts[2] if len(parts) > 2 else "primary"
+        node = multi_db_manager.get_node(target_id)
+        if node:
+            success, msg = multi_db_manager.set_enabled(target_id, not node.is_enabled)
+            await query.answer(msg, show_alert=True)
+        report = await multi_db_manager.get_full_status_report()
+        text = format_multidb_dashboard_text(report)
+        keyboard = build_multidb_main_keyboard()
+        await query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+        return
