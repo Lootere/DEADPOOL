@@ -74,6 +74,32 @@ def _get_search_filter_context(query):
     return key, base_search, dict(SEARCH_FILTERS.get(key, {}))
 
 
+async def _get_all_search_results(chat_id, search, sort_by, filters):
+    results = []
+    offset = 0
+    visited_offsets = set()
+    while True:
+        files, next_offset, _ = await get_search_results(
+            chat_id,
+            search,
+            offset=offset,
+            filter=True,
+            sort_by=sort_by,
+            filters=filters,
+        )
+        results.extend(files)
+        if next_offset == "":
+            return results
+
+        next_offset = int(next_offset)
+        if next_offset <= offset or next_offset in visited_offsets:
+            raise RuntimeError("Search pagination did not advance while building season pack")
+        visited_offsets.add(next_offset)
+        if not files:
+            raise RuntimeError("Search pagination returned an empty page before completion")
+        offset = next_offset
+
+
 def _search_suggestion_buttons(suggestions, user_id, chat_id):
     buttons = []
     for suggestion in suggestions:
@@ -1007,6 +1033,13 @@ async def seasons_check(bot, query):
                 btn.insert(0, [
                     InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
+            if seasons != "home":
+                btn.insert(1, [
+                    InlineKeyboardButton(
+                        "💎 VIP Season Pack",
+                        callback_data=f"season_pack#{userid}",
+                    )
+                ])
             _append_year_sort_controls(btn, userid)
             if offset != "":
                 BUTTONS[key] = movie
@@ -1053,6 +1086,57 @@ async def seasons_check(bot, query):
     except Exception as e:
         logger.exception("Season filter callback failed")
         return await query.answer("Search error aa gaya jaan, thodi der baad try karo.", show_alert=True)
+
+
+@Client.on_callback_query(filters.regex(r"^season_pack#"))
+async def season_pack(bot, query):
+    try:
+        _, requested_user = query.data.split("#", 1)
+        if int(requested_user) not in (0, query.from_user.id):
+            return await query.answer(
+                get_search_button_popup_message(query.from_user.id),
+                show_alert=True,
+            )
+        if not await db.has_premium_access(query.from_user.id):
+            return await query.answer(
+                get_vip_lock_message(query.from_user.id),
+                show_alert=True,
+            )
+
+        result_key, search, search_filters = _get_search_filter_context(query)
+        if not search or not search_filters.get("season"):
+            return await query.answer(
+                "Pehle apna season select karo jaan 😘",
+                show_alert=True,
+            )
+
+        files = await _get_all_search_results(
+            query.message.chat.id,
+            search,
+            RESULT_SORTS.get(result_key, "season"),
+            search_filters,
+        )
+        if not files:
+            return await query.answer(
+                "Jaan, is season ka koi pack nahi mila 🥺",
+                show_alert=True,
+            )
+
+        pack_key = secrets.token_urlsafe(6)
+        temp.GETALL[pack_key] = files
+        await query.answer(
+            url=(
+                f"https://t.me/{temp.U_NAME}?start="
+                f"allfiles_{query.message.chat.id}_{pack_key}"
+            )
+        )
+    except Exception:
+        logger.exception("VIP season pack preparation failed")
+        return await query.answer(
+            "Season pack banane mein issue aa gaya jaan, thodi der baad try karo ❤️",
+            show_alert=True,
+        )
+
 
 @Client.on_callback_query(filters.regex(r"^seas#"))
 async def select_seasons(bot, query):
