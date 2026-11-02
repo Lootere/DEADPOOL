@@ -64,6 +64,36 @@ def _season_sort_key(file_name):
     return (is_season_pack, season, episode, text)
 
 
+def _search_term_pattern(term):
+    """Match common filename spellings for episode, language, and resolution filters."""
+    episode = re.fullmatch(r"(?:e|ep|episode)0*(\d+)", term, flags=re.IGNORECASE)
+    if episode:
+        number = int(episode.group(1))
+        return (
+            r"(?:e0*{0}|ep0*{0}|episode\s*0*{0}|s\d+[\s._+-]*e0*{0})"
+        ).format(number)
+
+    language_aliases = {
+        "eng": ("eng", "english"),
+        "hin": ("hin", "hindi"),
+        "tam": ("tam", "tamil"),
+        "tel": ("tel", "telugu"),
+        "kan": ("kan", "kannada"),
+        "mal": ("mal", "malayalam"),
+        "guj": ("guj", "gujarati"),
+        "mar": ("mar", "marathi"),
+        "pun": ("pun", "punjabi"),
+    }
+    aliases = language_aliases.get(term.lower())
+    if aliases:
+        return r"(?:{})".format("|".join(re.escape(alias) for alias in aliases))
+
+    if term.lower() in ("2160p", "4k", "uhd"):
+        return r"(?:2160\s*p|4\s*k|uhd)"
+
+    return re.escape(term)
+
+
 client = AsyncIOMotorClient(DATABASE_URI)
 db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
@@ -165,9 +195,15 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
         operation = "building database query"
         terms = query.split()
         if len(terms) == 1:
-            raw_pattern = r'(^|[\s\.\+\-_])' + re.escape(terms[0]) + r'($|[\s\.\+\-_])'
+            raw_pattern = (
+                r'(^|[\s\.\+\-_])'
+                + _search_term_pattern(terms[0])
+                + r'($|[\s\.\+\-_])'
+            )
         else:
-            raw_pattern = r'[\s\.\+\-_]+'.join(re.escape(term) for term in terms)
+            raw_pattern = r'[\s\.\+\-_]+'.join(
+                _search_term_pattern(term) for term in terms
+            )
         regex = re.compile(raw_pattern, flags=re.IGNORECASE)
 
         if USE_CAPTION_FILTER:
