@@ -127,55 +127,84 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
     }
     if sort_by not in sort_fields:
         raise ValueError(f"Unsupported search sort option: {sort_by}")
-    banned_words = script.BLACKLIST
-    if chat_id is not None:
-        settings = await get_settings(int(chat_id))
-        try:
-            if settings['max_btn']:
-                max_results = 10
-            else:
-                max_results = int(MAX_B_TN)
-        except KeyError:
-            await save_group_settings(int(chat_id), 'max_btn', False)
-            settings = await get_settings(int(chat_id))
-            if settings['max_btn']:
-                max_results = 10
-            else:
-                max_results = int(MAX_B_TN)
-    query = str(query or "").strip()
+    query = re.sub(r"[\s._+\-]+", " ", str(query or "")).strip()
+    logger.info(
+        "Media search started (collection=%s, chat_id=%s, query=%r, offset=%s, sort=%s)",
+        COLLECTION_NAME,
+        chat_id,
+        query,
+        offset,
+        sort_by,
+    )
     if not query:
+        logger.info(
+            "Media search completed (collection=%s, query=%r, matched=0, retrieved=0)",
+            COLLECTION_NAME,
+            query,
+        )
         return [], "", 0
-    #if filter:
-        #better ?
-        #query = query.replace(' ', r'(\s|\.|\+|\-|_)')
-        #raw_pattern = r'(\s|_|\-|\.|\+)' + query + r'(\s|_|\-|\.|\+)'
-    terms = query.split()
-    if len(terms) == 1:
-        raw_pattern = r'(^|[\s\.\+\-_])' + re.escape(terms[0]) + r'($|[\s\.\+\-_])'
-    else:
-        raw_pattern = r'[\s\.\+\-_]+'.join(re.escape(term) for term in terms)
-    regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-
-    if USE_CAPTION_FILTER:
-        mongo_filter = {'$or': [{'file_name': regex}, {'caption': regex}]}
-    else:
-        mongo_filter = {'file_name': regex}
-
-    if file_type:
-        mongo_filter['file_type'] = file_type
-
+    operation = "preparing search"
     try:
+        banned_words = script.BLACKLIST
+        if chat_id is not None:
+            operation = "loading chat settings"
+            settings = await get_settings(int(chat_id))
+            try:
+                if settings['max_btn']:
+                    max_results = 10
+                else:
+                    max_results = int(MAX_B_TN)
+            except KeyError:
+                await save_group_settings(int(chat_id), 'max_btn', False)
+                settings = await get_settings(int(chat_id))
+                if settings['max_btn']:
+                    max_results = 10
+                else:
+                    max_results = int(MAX_B_TN)
+
+        operation = "building database query"
+        terms = query.split()
+        if len(terms) == 1:
+            raw_pattern = r'(^|[\s\.\+\-_])' + re.escape(terms[0]) + r'($|[\s\.\+\-_])'
+        else:
+            raw_pattern = r'[\s\.\+\-_]+'.join(re.escape(term) for term in terms)
+        regex = re.compile(raw_pattern, flags=re.IGNORECASE)
+
+        if USE_CAPTION_FILTER:
+            mongo_filter = {'$or': [{'file_name': regex}, {'caption': regex}]}
+        else:
+            mongo_filter = {'file_name': regex}
+
+        if file_type:
+            mongo_filter['file_type'] = file_type
+
+        operation = "counting matching documents"
         total_results = await Media.count_documents(mongo_filter)
+        logger.info(
+            "Media search count completed (collection=%s, query=%r, matched=%s)",
+            COLLECTION_NAME,
+            query,
+            total_results,
+        )
 
         next_offset = offset + max_results
 
-        if next_offset > total_results:
+        if next_offset >= total_results:
             next_offset = ''
 
+        operation = "retrieving result page"
         cursor = Media.find(mongo_filter)
         cursor.sort(*sort_fields[sort_by])
         cursor.skip(offset).limit(max_results)
         files = await cursor.to_list(length=max_results)
+        logger.info(
+            "Media search page retrieved (collection=%s, query=%r, retrieved=%s, offset=%s, page_size=%s)",
+            COLLECTION_NAME,
+            query,
+            len(files),
+            offset,
+            max_results,
+        )
         for file in files:
             for banned_word in banned_words:
                 pattern = re.compile(re.escape(banned_word), re.IGNORECASE)
@@ -185,7 +214,13 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
         if sort_by == "season":
             files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
     except Exception:
-        logger.exception("MongoDB file search failed for collection %s", COLLECTION_NAME)
+        logger.exception(
+            "Media search failed during %s (collection=%s, chat_id=%s, query=%r)",
+            operation,
+            COLLECTION_NAME,
+            chat_id,
+            query,
+        )
         raise
     return files, next_offset, total_results
 

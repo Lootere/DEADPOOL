@@ -1965,6 +1965,7 @@ async def auto_filter(client, msg, spoll=False):
     message = msg.message.reply_to_message if spoll else msg
     pending_message = None
     stage = "preparing search"
+    search_query = None
     try:
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         if not spoll:
@@ -1990,6 +1991,7 @@ async def auto_filter(client, msg, spoll=False):
                 search = re.sub(r"\s+", " ", search).strip()
                 search = search.replace("-", " ")
                 search = search.replace(":","")
+                search_query = search
                 stage = "searching MongoDB"
                 files, offset, total_results = await get_search_results(message.chat.id ,search, offset=0, filter=True)
                 stage = "loading chat settings"
@@ -2012,13 +2014,14 @@ async def auto_filter(client, msg, spoll=False):
                         await st.delete()
                         return await advantage_spell_chok(client, msg)
                     else:
-                        await message.reply_text("Aww 😏 file mili hi nahi.")
+                        await message.reply_text("No results found.")
                         return
             else:
                 return
         else:
             message = msg.message.reply_to_message  # msg will be callback query
             search, files, offset, total_results = spoll
+            search_query = search
             m=await message.reply_sticker(sticker="CAACAgIAAxkBAAEVugJljpdfkszexOUZu8hPjuPKty8ZmAACdxgAAqPjKEmMVSFmXGLogR4E",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🅿︎🅻︎🅴︎🅰︎🆂︎🅴︎  🆆︎🅰︎🅸︎🆃︎", url=CHNL_LNK)]]))
             settings = await get_settings(message.chat.id)
@@ -2183,7 +2186,12 @@ async def auto_filter(client, msg, spoll=False):
             await msg.message.delete()
     except Exception:
         chat_id = getattr(getattr(message, "chat", None), "id", None)
-        logger.exception("Auto-filter failed during %s (chat_id=%s)", stage, chat_id)
+        logger.exception(
+            "Auto-filter failed during %s (chat_id=%s, query=%r)",
+            stage,
+            chat_id,
+            search_query,
+        )
         if pending_message is not None:
             try:
                 await pending_message.delete()
@@ -2215,8 +2223,9 @@ async def advantage_spell_chok(client, message):
     query = query.strip() + " movie"
     try:
         movies = await get_poster(search, bulk=True)
-    except:
-        k = await message.reply(script.I_CUDNT.format(search))
+    except Exception:
+        logger.exception("IMDb spelling-suggestion lookup failed for query=%r", search)
+        k = await message.reply_text("No results found.")
         await asyncio.sleep(60)
         await k.delete()
         try:
@@ -2229,7 +2238,7 @@ async def advantage_spell_chok(client, message):
         button = [[
             InlineKeyboardButton("🔍 ᴄʜᴇᴄᴋ sᴘᴇʟʟɪɴɢ ᴏɴ ɢᴏᴏɢʟᴇ 🔍", url=f"https://www.google.com/search?q={google}")
         ]]
-        k = await message.reply_text(text=script.I_CUDNT.format(search), reply_markup=InlineKeyboardMarkup(button))
+        k = await message.reply_text(text="No results found.", reply_markup=InlineKeyboardMarkup(button))
         await asyncio.sleep(120)
         await k.delete()
         try:
