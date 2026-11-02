@@ -6,7 +6,7 @@ from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong, PeerIdInv
 from info import ADMINS, LOG_CHANNEL, SUPPORT_CHAT, MELCOW_NEW_USERS, WELCOME_VID, CHNL_LNK, GRP_LNK
 from database.users_chats_db import db
 from database.ia_filterdb import Media
-from utils import get_size, temp, get_settings
+from utils import get_size, temp, get_settings, get_auto_delete_seconds
 from Script import script
 from pyrogram.errors import ChatAdminRequired
 import asyncio 
@@ -58,8 +58,9 @@ async def save_group(bot, message):
                                                  parse_mode=enums.ParseMode.HTML
                 )
         await message.delete()
-        if settings["auto_delete"]:
-            await asyncio.sleep(600)
+        auto_delete_seconds = get_auto_delete_seconds(settings)
+        if auto_delete_seconds:
+            await asyncio.sleep(auto_delete_seconds)
             await (temp.MELCOW['welcome']).delete()
                 
                

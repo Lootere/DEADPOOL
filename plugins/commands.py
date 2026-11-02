@@ -20,7 +20,7 @@ from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from info import *
 from .pm_filter import auto_filter
-from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked
+from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked, get_auto_delete_label
 from database.connections_mdb import active_connection
 import re
 import json
@@ -830,8 +830,8 @@ async def settings(client, message):
                 InlineKeyboardButton('✔ Oɴ' if settings["welcome"] else '✘ Oғғ',callback_data=f'setgs#welcome#{settings["welcome"]}#{grp_id}',),
             ],
             [
-                InlineKeyboardButton('Aᴜᴛᴏ-Dᴇʟᴇᴛᴇ', callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{grp_id}',),
-                InlineKeyboardButton('10 Mɪɴs' if settings["auto_delete"] else '✘ Oғғ', callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{grp_id}',),
+                InlineKeyboardButton('Aᴜᴛᴏ-Dᴇʟᴇᴛᴇ', callback_data=f'setgs#auto_delete_menu#0#{grp_id}',),
+                InlineKeyboardButton(get_auto_delete_label(settings), callback_data=f'setgs#auto_delete_menu#0#{grp_id}',),
             ],
             [
                 InlineKeyboardButton('Aᴜᴛᴏ-Fɪʟᴛᴇʀ', callback_data=f'setgs#auto_ffilter#{settings["auto_ffilter"]}#{grp_id}',),

@@ -356,6 +356,7 @@ class Database:
             'spell_check': SPELL_CHECK_REPLY,
             'welcome': MELCOW_NEW_USERS,
             'auto_delete': AUTO_DELETE,
+            'auto_delete_time': 600 if AUTO_DELETE else 0,
             'auto_ffilter': AUTO_FFILTER,
             'max_btn': MAX_BTN,
             'template': IMDB_TEMPLATE,

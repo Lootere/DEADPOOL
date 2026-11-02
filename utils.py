@@ -28,6 +28,39 @@ from shortzy import Shortzy
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+AUTO_DELETE_OPTIONS = (
+    (0, "Off"),
+    (60, "1 min"),
+    (300, "5 mins"),
+    (600, "10 mins"),
+    (1800, "30 mins"),
+)
+
+
+def get_auto_delete_seconds(settings):
+    seconds = settings.get("auto_delete_time")
+    if seconds is None:
+        return 600 if settings.get("auto_delete", AUTO_DELETE) else 0
+
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        logger.warning("Invalid auto-delete timer setting: %r", seconds)
+        return 600 if settings.get("auto_delete", AUTO_DELETE) else 0
+
+    if seconds not in dict(AUTO_DELETE_OPTIONS):
+        logger.warning("Unsupported auto-delete timer setting: %r", seconds)
+        return 600 if settings.get("auto_delete", AUTO_DELETE) else 0
+    return seconds
+
+
+def get_auto_delete_label(settings):
+    seconds = get_auto_delete_seconds(settings)
+    if not seconds:
+        return "✘ Oғғ"
+    minutes = seconds // 60
+    return f"{minutes} Mɪɴ" + ("s" if minutes != 1 else "")
+
 BTN_URL_REGEX = re.compile(
     r"(\[([^\[]+?)\]\((buttonurl|buttonalert):(?:/{0,2})(.+?)(:same)?\))"
 )
