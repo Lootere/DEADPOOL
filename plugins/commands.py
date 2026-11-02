@@ -550,6 +550,7 @@ async def start(client, message):
                     protect_content=True if pre == 'filep' else False,
                     reply_markup=reply_markup
                 )
+                await db.record_weekly_activity(message.from_user.id)
                 filesarr.append(msg)
             if await db.get_setting("AUTO_FILE_DELETE", default=AUTO_FILE_DELETE):
                 k = await client.send_message(chat_id = message.from_user.id, text=f"<b><u>❗️❗️❗️IMPORTANT❗️️❗️❗️</u></b>\n\nThis Movie Files/Videos will be deleted in <b><u>10 mins</u> 🫥 <i></b>(Due to Copyright Issues)</i>.\n\n<b><i>Please forward this ALL Files/Videos to your Saved Messages and Start Download there</i></b>")
@@ -582,6 +583,7 @@ async def start(client, message):
                     protect_content=True if pre == 'filep' else False,
                     reply_markup=reply_markup
                 )
+                await db.record_weekly_activity(message.from_user.id)
                 filetype = msg.media
                 file = getattr(msg, filetype.value)
                 title = file.file_name
@@ -645,6 +647,7 @@ async def start(client, message):
             protect_content=True if pre == 'filep' else False,
             reply_markup=reply_markup
         )
+        await db.record_weekly_activity(message.from_user.id)
         if await db.get_setting("AUTO_FILE_DELETE", default=AUTO_FILE_DELETE):
             del_msg=await message.reply("<b>⚠️ᴛʜɪs ғɪʟᴇ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ᴀғᴛᴇʀ 10 ᴍɪɴᴜᴛᴇs\n\nᴘʟᴇᴀsᴇ ғᴏʀᴡᴀʀᴅ ᴛʜᴇ ғɪʟᴇ sᴏᴍᴇᴡʜᴇʀᴇ ʙᴇғᴏʀᴇ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ..</b>") 
             Lootere = msg
@@ -661,6 +664,35 @@ async def start(client, message):
             "Aww, file bhejne mein issue aa gaya. Thodi der baad try karo."
         )
         
+@Client.on_message(filters.command("leaderboard"))
+async def weekly_leaderboard(client, message):
+    week = db.current_activity_week()
+    users = await db.get_weekly_leaderboard(limit=10)
+    if not users:
+        return await message.reply_text(
+            "Jaan, is hafte abhi koi file activity nahi hai. Pehli file bhejo ❤️"
+        )
+
+    rows = [
+        "<b>🏆 Is hafte ke most active users 🏆</b>",
+        f"<i>Week: {week} · Files delivered</i>",
+        "",
+    ]
+    medals = ("🥇", "🥈", "🥉")
+    for rank, user in enumerate(users, start=1):
+        name = html_escape(str(user.get("name") or "User"))
+        user_id = int(user["id"])
+        count = int(user.get("weekly_activity_count", 0))
+        medal = medals[rank - 1] if rank <= len(medals) else f"{rank}."
+        rows.append(f"{medal} <a href=\"tg://user?id={user_id}\">{name}</a> — {count}")
+
+    await message.reply_text(
+        "\n".join(rows),
+        parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
            

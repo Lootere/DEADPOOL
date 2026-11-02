@@ -210,6 +210,57 @@ class Database:
     async def total_users_count(self):
         count = await self.col.count_documents({})
         return count
+
+    @staticmethod
+    def current_activity_week():
+        week = datetime.now(pytz.timezone("Asia/Kolkata")).date().isocalendar()
+        return f"{week.year}-W{week.week:02d}"
+
+    async def record_weekly_activity(self, user_id, count=1):
+        user_id = int(user_id)
+        count = int(count)
+        if count < 1:
+            raise ValueError("Weekly activity count must be positive")
+
+        week = self.current_activity_week()
+        await self.col.update_one(
+            {"id": user_id},
+            {"$setOnInsert": self.new_user(user_id, "None")},
+            upsert=True,
+        )
+        await self.col.update_one(
+            {"id": user_id, "weekly_activity_week": {"$ne": week}},
+            {
+                "$set": {
+                    "weekly_activity_week": week,
+                    "weekly_activity_count": 0,
+                }
+            },
+        )
+        await self.col.update_one(
+            {"id": user_id, "weekly_activity_week": week},
+            {"$inc": {"weekly_activity_count": count}},
+        )
+
+    async def get_weekly_leaderboard(self, limit=10):
+        limit = int(limit)
+        if not 1 <= limit <= 50:
+            raise ValueError("Leaderboard limit must be between 1 and 50")
+        week = self.current_activity_week()
+        cursor = self.col.find(
+            {
+                "weekly_activity_week": week,
+                "weekly_activity_count": {"$gt": 0},
+            },
+            {
+                "_id": 0,
+                "id": 1,
+                "name": 1,
+                "weekly_activity_count": 1,
+            },
+        )
+        cursor.sort([("weekly_activity_count", -1), ("name", 1)])
+        return await cursor.limit(limit).to_list(length=limit)
     
     async def remove_ban(self, id):
         ban_status = dict(
