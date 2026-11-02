@@ -1962,17 +1962,21 @@ async def ai_spell_check(chat_id, wrong_name):
         print('Got error while searching movie in ai_spell_check', e)
         
 async def auto_filter(client, msg, spoll=False):
+    message = msg.message.reply_to_message if spoll else msg
+    pending_message = None
+    stage = "preparing search"
     try:
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         if not spoll:
-            message = msg
             if message.text.startswith("/"): return  # ignore commands
-            if re.findall("((^\/|^,|^!|^\.|^[\U0001F600-\U000E007F]).*)", message.text):
+            if re.findall(r"((^/|^,|^!|^\.|^[\U0001F600-\U000E007F]).*)", message.text):
                 return
             if len(message.text) < 100:
                 search = message.text
+                stage = "sending search status"
                 m=await message.reply_sticker(sticker="CAACAgIAAxkBAAEVugJljpdfkszexOUZu8hPjuPKty8ZmAACdxgAAqPjKEmMVSFmXGLogR4E",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🅿︎🅻︎🅴︎🅰︎🆂︎🅴︎  🆆︎🅰︎🅸︎🆃︎", url=CHNL_LNK)]]))
+                pending_message = m
                 search = search.lower()
                 find = search.split(" ")
                 search = ""
@@ -1986,11 +1990,14 @@ async def auto_filter(client, msg, spoll=False):
                 search = re.sub(r"\s+", " ", search).strip()
                 search = search.replace("-", " ")
                 search = search.replace(":","")
+                stage = "searching MongoDB"
                 files, offset, total_results = await get_search_results(message.chat.id ,search, offset=0, filter=True)
+                stage = "loading chat settings"
                 settings = await get_settings(message.chat.id)
                 if not files:
                     await m.delete()
-                    if settings["spell_check"]:
+                    pending_message = None
+                    if settings.get("spell_check", SPELL_CHECK_REPLY):
                         ai_sts = await message.reply_sticker(sticker=f"CAACAgQAAxkBAAEq2R9mipkiW9ACyj7oQXznwKTPHqNCXQACkBUAA3mRUZGx4GwLX9XCHgQ")
                         st=await message.reply('<b>Ai is Cheking For Your Spelling. Please Wait.</b>') 
                         is_misspelled = await ai_spell_check(chat_id = message.chat.id,wrong_name=search)
@@ -2005,6 +2012,7 @@ async def auto_filter(client, msg, spoll=False):
                         await st.delete()
                         return await advantage_spell_chok(client, msg)
                     else:
+                        await message.reply_text("Aww 😏 file mili hi nahi.")
                         return
             else:
                 return
@@ -2014,6 +2022,8 @@ async def auto_filter(client, msg, spoll=False):
             m=await message.reply_sticker(sticker="CAACAgIAAxkBAAEVugJljpdfkszexOUZu8hPjuPKty8ZmAACdxgAAqPjKEmMVSFmXGLogR4E",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🅿︎🅻︎🅴︎🅰︎🆂︎🅴︎  🆆︎🅰︎🅸︎🆃︎", url=CHNL_LNK)]]))
             settings = await get_settings(message.chat.id)
+        pending_message = m
+        stage = "building search results"
         key = f"{message.chat.id}-{message.id}"
         temp.GETALL[key] = files
         temp.CHAT[message.from_user.id] = message.chat.id
@@ -2076,43 +2086,24 @@ async def auto_filter(client, msg, spoll=False):
             btn.append(
                 [InlineKeyboardButton(text="𝐍𝐎 𝐌𝐎𝐑𝐄 𝐏𝐀𝐆𝐄𝐒 𝐀𝐕𝐀𝐈𝐋𝐀𝐁𝐋𝐄",callback_data="pages")]
             )
-        imdb = await get_poster(search, file=(files[0]).file_name) if settings["imdb"] else None
+        imdb = None
+        if settings.get("imdb", IMDB):
+            stage = "fetching optional IMDb details"
+            try:
+                imdb = await get_poster(search, file=files[0].file_name)
+            except Exception:
+                logger.exception("IMDb lookup failed; continuing with file search results")
         cur_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         time_difference = timedelta(hours=cur_time.hour, minutes=cur_time.minute, seconds=(cur_time.second+(cur_time.microsecond/1000000))) - timedelta(hours=curr_time.hour, minutes=curr_time.minute, seconds=(curr_time.second+(curr_time.microsecond/1000000)))
         remaining_seconds = "{:.2f}".format(time_difference.total_seconds())
-        TEMPLATE = settings['template']
+        TEMPLATE = settings.get('template', IMDB_TEMPLATE)
         if imdb:
-            cap = TEMPLATE.format(
-                query=search,
-                title=imdb['title'],
-                votes=imdb['votes'],
-                aka=imdb["aka"],
-                seasons=imdb["seasons"],
-                box_office=imdb['box_office'],
-                localized_title=imdb['localized_title'],
-                kind=imdb['kind'],
-                imdb_id=imdb["imdb_id"],
-                cast=imdb["cast"],
-                runtime=imdb["runtime"],
-                countries=imdb["countries"],
-                certificates=imdb["certificates"],
-                languages=imdb["languages"],
-                director=imdb["director"],
-                writer=imdb["writer"],
-                producer=imdb["producer"],
-                composer=imdb["composer"],
-                cinematographer=imdb["cinematographer"],
-                music_team=imdb["music_team"],
-                distributors=imdb["distributors"],
-                release_date=imdb['release_date'],
-                year=imdb['year'],
-                genres=imdb['genres'],
-                poster=imdb['poster'],
-                plot=imdb['plot'],
-                rating=imdb['rating'],
-                url=imdb['url'],
-                **locals()
-            )
+            format_values = {**imdb, **locals(), "query": search}
+            try:
+                cap = TEMPLATE.format(**format_values)
+            except Exception:
+                logger.exception("Configured IMDb template failed; using the built-in template")
+                cap = script.IMDB_TEMPLATE_TXT.format(query=search, **imdb)
             temp.IMDB_CAP[message.from_user.id] = cap
             if settings.get("button", SINGLE_BUTTON):
                 for file in files:
@@ -2126,10 +2117,12 @@ async def auto_filter(client, msg, spoll=False):
                 for file in files:
                     cap += f"<b><a href='https://telegram.me/{temp.U_NAME}?start=files_{message.chat.id}_{file.file_id}'> 📁 {get_size(file.file_size)} ▷ {file.file_name}\n\n</a></b>"
 
+        stage = "sending search results"
         if imdb and imdb.get('poster'):  
             try:
                 hehe = await message.reply_photo(photo=imdb.get('poster'), caption=cap, reply_markup=InlineKeyboardMarkup(btn))
                 await m.delete()
+                pending_message = None
                 try:
                     if settings['auto_delete']:
                         await asyncio.sleep(600)
@@ -2144,6 +2137,8 @@ async def auto_filter(client, msg, spoll=False):
                 pic = imdb.get('poster')
                 poster = pic.replace('.jpg', "._V1_UX360.jpg")
                 hmm = await message.reply_photo(photo=poster, caption=cap, reply_markup=InlineKeyboardMarkup(btn))
+                await m.delete()
+                pending_message = None
                 try:
                     if settings['auto_delete']:
                         await asyncio.sleep(600)
@@ -2157,6 +2152,8 @@ async def auto_filter(client, msg, spoll=False):
             except Exception as e:
                 logger.exception(e)
                 fek = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
+                await m.delete()
+                pending_message = None
                 try:
                     if settings['auto_delete']:
                         await asyncio.sleep(600)
@@ -2171,6 +2168,7 @@ async def auto_filter(client, msg, spoll=False):
             fuk = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn))
             await message.delete()
             await m.delete()
+            pending_message = None
             try:
                 if settings['auto_delete']:
                     await asyncio.sleep(600)
@@ -2183,9 +2181,19 @@ async def auto_filter(client, msg, spoll=False):
                 await message.delete()
         if spoll:
             await msg.message.delete()
-    except Exception as e:
-            await message.reply(f"{e}")
-            return
+    except Exception:
+        chat_id = getattr(getattr(message, "chat", None), "id", None)
+        logger.exception("Auto-filter failed during %s (chat_id=%s)", stage, chat_id)
+        if pending_message is not None:
+            try:
+                await pending_message.delete()
+            except Exception:
+                logger.warning("Could not remove the search status message", exc_info=True)
+        try:
+            await message.reply_text("Aww 😏 search mein dikkat aa gayi. Thodi der baad try karo.")
+        except Exception:
+            logger.exception("Could not send the search failure message")
+        return
 
 async def advantage_spell_chok(client, message):
     mv_id = message.id

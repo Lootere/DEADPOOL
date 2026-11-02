@@ -142,49 +142,51 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
                 max_results = 10
             else:
                 max_results = int(MAX_B_TN)
-    query = query.strip()
+    query = str(query or "").strip()
+    if not query:
+        return [], "", 0
     #if filter:
         #better ?
         #query = query.replace(' ', r'(\s|\.|\+|\-|_)')
         #raw_pattern = r'(\s|_|\-|\.|\+)' + query + r'(\s|_|\-|\.|\+)'
-    if not query:
-        raw_pattern = '.'
-    elif ' ' not in query:
-        raw_pattern = r'(\b|[\.\+\-_])' + query + r'(\b|[\.\+\-_])'
+    terms = query.split()
+    if len(terms) == 1:
+        raw_pattern = r'(^|[\s\.\+\-_])' + re.escape(terms[0]) + r'($|[\s\.\+\-_])'
     else:
-        raw_pattern = query.replace(' ', r'.*[\s\.\+\-_]')
-    
-    try:
-        regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-    except:
-        return []
+        raw_pattern = r'[\s\.\+\-_]+'.join(re.escape(term) for term in terms)
+    regex = re.compile(raw_pattern, flags=re.IGNORECASE)
 
     if USE_CAPTION_FILTER:
-        filter = {'$or': [{'file_name': regex}, {'caption': regex}]}
+        mongo_filter = {'$or': [{'file_name': regex}, {'caption': regex}]}
     else:
-        filter = {'file_name': regex}
+        mongo_filter = {'file_name': regex}
 
     if file_type:
-        filter['file_type'] = file_type
+        mongo_filter['file_type'] = file_type
 
-    total_results = await Media.count_documents(filter)
-    next_offset = offset + max_results
+    try:
+        total_results = await Media.count_documents(mongo_filter)
 
-    if next_offset > total_results:
-        next_offset = ''
+        next_offset = offset + max_results
 
-    cursor = Media.find(filter)
-    cursor.sort(*sort_fields[sort_by])
-    cursor.skip(offset).limit(max_results)
-    files = await cursor.to_list(length=max_results)
-    for file in files:
-        for banned_word in banned_words:
-            pattern = re.compile(re.escape(banned_word), re.IGNORECASE)
-            file['file_name'] = pattern.sub('', file['file_name']).strip()
-        file['file_name'] = _clean_display_file_name(file.get('file_name'))
+        if next_offset > total_results:
+            next_offset = ''
 
-    if sort_by == "season":
-        files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
+        cursor = Media.find(mongo_filter)
+        cursor.sort(*sort_fields[sort_by])
+        cursor.skip(offset).limit(max_results)
+        files = await cursor.to_list(length=max_results)
+        for file in files:
+            for banned_word in banned_words:
+                pattern = re.compile(re.escape(banned_word), re.IGNORECASE)
+                file['file_name'] = pattern.sub('', file['file_name']).strip()
+            file['file_name'] = _clean_display_file_name(file.get('file_name'))
+
+        if sort_by == "season":
+            files.sort(key=lambda file: _season_sort_key(file.get('file_name')))
+    except Exception:
+        logger.exception("MongoDB file search failed for collection %s", COLLECTION_NAME)
+        raise
     return files, next_offset, total_results
 
 async def get_all_files():
