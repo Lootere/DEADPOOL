@@ -29,6 +29,16 @@ logger = logging.getLogger(__name__)
 
 TIMEZONE = "Asia/KKolkata"
 
+
+async def _send_all_vip_required(message):
+    await message.reply_text(
+        "Ye VIP hai cutie 😏 Send All sirf VIP ke liye.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✨ Bʏ VIP ✨", callback_data="premium_info")
+        ]])
+    )
+
+
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     try: 
@@ -160,6 +170,8 @@ async def start(client, message):
         user_id = Lootere.from_user.id  
         if len(Lootere.command) == 2:
             if Lootere.command[1].startswith(('verify', 'sendall')):
+                if Lootere.command[1].startswith('sendall') and not await db.has_premium_access(message.from_user.id):
+                    return await _send_all_vip_required(message)
                 _, userid, verify_id, file_id = Lootere.command[1].split("_", 3)
                 user_id = int(userid)
                 grp_id = temp.CHAT.get(user_id, 0)
@@ -206,6 +218,8 @@ async def start(client, message):
                 return
         
         data = message.command[1]
+        if data.startswith("allfiles_") and not await db.has_premium_access(message.from_user.id):
+            return await _send_all_vip_required(message)
         try:
             pre, grp_id, file_id = data.split('_', 2)
         except:

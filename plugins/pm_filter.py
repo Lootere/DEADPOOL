@@ -57,7 +57,7 @@ def _build_search_keyboard(files, user_id, key, next_offset, total_results, sett
         ])
 
     buttons.extend([
-        [InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")],
+        [InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")],
         [
             InlineKeyboardButton("Lᴀɴɢᴜᴀɢᴇ", callback_data=f"select_lang#{user_id}"),
             InlineKeyboardButton("Qᴜᴀʟɪᴛʏ", callback_data=f"quality#{user_id}")
@@ -277,7 +277,7 @@ async def next_page(bot, query):
                 InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{req}")
             ])
             btn.insert(0, [
-                InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
             ])
         else:
             btn = []
@@ -290,7 +290,7 @@ async def next_page(bot, query):
                 InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{req}")
             ])
             btn.insert(0, [
-                InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
             ])
         _append_year_sort_controls(btn, req)
         try:
@@ -418,7 +418,7 @@ async def language_check(bot, query):
                     InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{userid}")
                 ])
                 btn.insert(0, [
-                    InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                    InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
             else:
                 btn = []
@@ -431,7 +431,7 @@ async def language_check(bot, query):
                     InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{userid}")
                 ])
                 btn.insert(0, [
-                    InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                    InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
             _append_year_sort_controls(btn, userid)
     
@@ -657,7 +657,7 @@ async def quality_check(bot, query):
                     InlineKeyboardButton("! Sᴇʟᴇᴄᴛ Aɢᴀɪɴ !", callback_data=f"quality#{userid}")
                 ])
                 btn.insert(0, [
-                    InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                    InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
             else:
                 btn = []
@@ -670,7 +670,7 @@ async def quality_check(bot, query):
                     InlineKeyboardButton("! Sᴇʟᴇᴄᴛ Aɢᴀɪɴ !", callback_data=f"quality#{userid}")
                 ])
                 btn.insert(0, [
-                    InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                    InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
             _append_year_sort_controls(btn, userid)
             if offset != "":
@@ -785,7 +785,7 @@ async def seasons_check(bot, query):
                     InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{userid}")
                 ])
                 btn.insert(0, [
-                    InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                    InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
             else:
                 btn = []
@@ -798,7 +798,7 @@ async def seasons_check(bot, query):
                     InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{userid}")
                 ])
                 btn.insert(0, [
-                    InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                    InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
             _append_year_sort_controls(btn, userid)
             if offset != "":
@@ -920,7 +920,7 @@ async def episode_check(bot, query):
                     InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{userid}")
                 ])
                 btn.insert(0, [
-                    InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                    InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
             else:
                 btn = []
@@ -933,7 +933,7 @@ async def episode_check(bot, query):
                     InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{userid}")
                 ])
                 btn.insert(0, [
-                    InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}")
+                    InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
                 ])
             _append_year_sort_controls(btn, userid)
             if offset != "":
@@ -1266,6 +1266,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
                  
             
     elif query.data.startswith("sendfiles"):
+        if not await db.has_premium_access(query.from_user.id):
+            return await query.answer("Ye sirf VIP ke liye hai 😏", show_alert=True)
         clicked = query.from_user.id
         ident, key = query.data.split("#") 
         settings = await get_settings(query.message.chat.id)
@@ -2050,7 +2052,7 @@ async def auto_filter(client, msg, spoll=False):
                 InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{message.from_user.id}"),
             ])
             btn.insert(0, [
-                InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}"), 
+                InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}"),
             ])
         else:
             btn = []
@@ -2063,7 +2065,7 @@ async def auto_filter(client, msg, spoll=False):
                 InlineKeyboardButton("Qᴜᴀʟɪᴛʏꜱ", callback_data=f"quality#{message.from_user.id}"),
             ])
             btn.insert(0, [
-                InlineKeyboardButton("! Sᴇɴᴅ Aʟʟ !", callback_data=f"sendfiles#{key}"), 
+                InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}"),
             ])
         _append_year_sort_controls(btn, message.from_user.id)
     
