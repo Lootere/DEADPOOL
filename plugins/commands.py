@@ -39,6 +39,11 @@ async def _send_all_vip_required(message):
     )
 
 
+async def _is_shortener_enabled(settings):
+    global_enabled = await db.get_setting("IS_VERIFY", default=IS_VERIFY)
+    return bool(settings.get("is_verify", IS_VERIFY) and global_enabled)
+
+
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     try: 
@@ -269,9 +274,7 @@ async def start(client, message):
                 return
         if not await db.has_premium_access(user_id):
             settings = await get_settings(int(grp_id))
-            is_verify = settings["is_verify"]
-            if not is_verify:
-                is_verify = await db.get_setting("IS_VERIFY", default=IS_VERIFY)
+            is_verify = await _is_shortener_enabled(settings)
             user_verified = await db.is_user_verified(user_id)
             is_second_shortener = await db.use_second_shortener(user_id, settings.get('verify_time', TWO_VERIFY_GAP))
             is_third_shortener = await db.use_third_shortener(user_id, settings.get('verify_time', THIRD_VERIFY_GAP))     
