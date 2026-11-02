@@ -15,7 +15,14 @@ from datetime import datetime, timedelta, date, time
 from pyrogram import Client, filters, enums
 from pyrogram.errors import ChatAdminRequired, FloodWait
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files, get_search_results
+from database.ia_filterdb import (
+    Media,
+    clear_search_results_cache,
+    get_file_details,
+    unpack_new_file_id,
+    get_bad_files,
+    get_search_results,
+)
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from info import *
@@ -739,6 +746,8 @@ async def delete(bot, message):
                 await msg.edit('Fɪʟᴇ ɪs sᴜᴄᴄᴇssғᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ғʀᴏᴍ ᴅᴀᴛᴀʙᴀsᴇ')
             else:
                 await msg.edit('Fɪʟᴇ ɴᴏᴛ ғᴏᴜɴᴅ ɪɴ ᴅᴀᴛᴀʙᴀsᴇ')
+    if result.deleted_count:
+        clear_search_results_cache()
 
 
 @Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
@@ -766,6 +775,7 @@ async def delete_all_index(bot, message):
 @Client.on_callback_query(filters.regex(r'^autofilter_delete'))
 async def delete_all_index_confirm(bot, message):
     await Media.collection.drop()
+    clear_search_results_cache()
     await message.answer("Eᴠᴇʀʏᴛʜɪɴɢ's Gᴏɴᴇ")
     await message.message.edit('Sᴜᴄᴄᴇsғᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ Aʟʟ Tʜᴇ Iɴᴅᴇxᴇᴅ Fɪʟᴇs.')
 

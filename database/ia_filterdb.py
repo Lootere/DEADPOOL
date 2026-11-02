@@ -4,8 +4,11 @@ import logging
 from struct import pack
 import re
 import base64
+import copy
 from collections.abc import Mapping
+from collections import OrderedDict
 from difflib import SequenceMatcher
+from time import monotonic
 from pyrogram.file_id import FileId
 from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
@@ -21,6 +24,55 @@ logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+SEARCH_RESULTS_CACHE = OrderedDict()
+SEARCH_RESULTS_CACHE_TTL = 60
+SEARCH_RESULTS_CACHE_MAX_ENTRIES = 256
+SEARCH_RESULTS_CACHE_GENERATION = 0
+
+
+def clear_search_results_cache():
+    global SEARCH_RESULTS_CACHE_GENERATION
+    SEARCH_RESULTS_CACHE.clear()
+    SEARCH_RESULTS_CACHE_GENERATION += 1
+
+
+def _search_results_cache_key(query, file_type, max_results, offset, sort_by, filters):
+    normalized_filters = tuple(sorted(
+        (str(name).casefold(), str(value).strip().casefold())
+        for name, value in (filters or {}).items()
+    ))
+    return (
+        SEARCH_RESULTS_CACHE_GENERATION,
+        query.casefold(),
+        file_type,
+        max_results,
+        offset,
+        sort_by,
+        normalized_filters,
+    )
+
+
+def _get_cached_search_results(key):
+    entry = SEARCH_RESULTS_CACHE.get(key)
+    if entry is None:
+        return None
+    expires_at, results = entry
+    if monotonic() >= expires_at:
+        SEARCH_RESULTS_CACHE.pop(key, None)
+        return None
+    SEARCH_RESULTS_CACHE.move_to_end(key)
+    return copy.deepcopy(results)
+
+
+def _cache_search_results(key, results):
+    SEARCH_RESULTS_CACHE[key] = (
+        monotonic() + SEARCH_RESULTS_CACHE_TTL,
+        copy.deepcopy(results),
+    )
+    SEARCH_RESULTS_CACHE.move_to_end(key)
+    while len(SEARCH_RESULTS_CACHE) > SEARCH_RESULTS_CACHE_MAX_ENTRIES:
+        SEARCH_RESULTS_CACHE.popitem(last=False)
 
 
 def _clean_display_file_name(file_name):
@@ -374,6 +426,7 @@ async def save_file(media):
             return False, file_id
         else:
             logger.info(f'{getattr(media, "file_name", "NO_FILE")} is saved to database')
+            clear_search_results_cache()
             return True, file_id
 
 
@@ -432,6 +485,20 @@ async def get_search_results(
                 else:
                     max_results = int(MAX_B_TN)
 
+        cache_key = _search_results_cache_key(
+            query, file_type, max_results, offset, sort_by, filters
+        )
+        cached_results = _get_cached_search_results(cache_key)
+        if cached_results is not None:
+            logger.debug(
+                "Media search cache hit (collection=%s, query=%r, offset=%s, sort=%s)",
+                COLLECTION_NAME,
+                query,
+                offset,
+                sort_by,
+            )
+            return cached_results
+
         operation = "building database query"
         mongo_filter = _build_search_filter(query, file_type, filters)
 
@@ -476,6 +543,8 @@ async def get_search_results(
 
         if sort_by == "season":
             files.sort(key=lambda file: _season_sort_key(file['file_name']))
+        search_results = (files, next_offset, total_results)
+        _cache_search_results(cache_key, search_results)
     except Exception:
         logger.exception(
             "Media search failed during %s (collection=%s, chat_id=%s, query=%r)",
@@ -485,7 +554,7 @@ async def get_search_results(
             query,
         )
         raise
-    return files, next_offset, total_results
+    return search_results
 
 async def get_all_files():
     cursor = Media.find() 
