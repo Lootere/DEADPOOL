@@ -20,7 +20,7 @@ from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from info import *
 from .pm_filter import auto_filter
-from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked, get_auto_delete_label
+from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked, get_auto_delete_label, get_sponsor_button, is_valid_sponsor_button
 from database.connections_mdb import active_connection
 import re
 import json
@@ -230,6 +230,9 @@ async def start(client, message):
                         InlineKeyboardButton('🆓 ᴘʀᴇᴍɪᴜᴍ', callback_data="pm_reff"), 
                         InlineKeyboardButton('✨ ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ ✨', callback_data="premium_info")
                     ]]
+            sponsor_button = await get_sponsor_button()
+            if sponsor_button:
+                buttons.append([sponsor_button])
             reply_markup = InlineKeyboardMarkup(buttons)
             m=await message.reply_sticker("CAACAgQAAxkBAAEKeqNlIpmeUoOEsEWOWEiPxPi3hH5q-QACbg8AAuHqsVDaMQeY6CcRojAE") 
             await asyncio.sleep(2)
@@ -255,6 +258,9 @@ async def start(client, message):
                         InlineKeyboardButton('🆓 ᴘʀᴇᴍɪᴜᴍ', callback_data="pm_reff"), 
                         InlineKeyboardButton('✨ ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ ✨', callback_data="premium_info")
                     ]]
+            sponsor_button = await get_sponsor_button()
+            if sponsor_button:
+                buttons.append([sponsor_button])
             reply_markup = InlineKeyboardMarkup(buttons)
             m=await message.reply_sticker("CAACAgQAAxkBAAEKeqNlIpmeUoOEsEWOWEiPxPi3hH5q-QACbg8AAuHqsVDaMQeY6CcRojAE") 
             await asyncio.sleep(2)
@@ -1188,6 +1194,81 @@ async def list_global_fsub(client, message):
         + "\n".join(channel_lines)
         + "</b>"
     )
+
+
+@Client.on_message(filters.command("sponsor_button"))
+async def sponsor_button_status(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    config = await db.get_setting("SPONSOR_BUTTON", default={})
+    if not isinstance(config, dict) or not is_valid_sponsor_button(
+        config.get("text"), config.get("url")
+    ):
+        return await message.reply_text(
+            "Sponsor button abhi set nahi hai jaan. "
+            "/set_sponsor_button Button Text | https://example.com ❤️"
+        )
+    state = "ON" if config.get("enabled") else "OFF"
+    await message.reply_text(
+        f"Sponsor button: {state}\n"
+        f"Text: {config['text']}\n"
+        f"URL: {config['url']}"
+    )
+
+
+@Client.on_message(filters.command("set_sponsor_button"))
+async def set_sponsor_button(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    if message.chat.type != enums.ChatType.PRIVATE:
+        return await message.reply_text(
+            "Jaan, sponsor button PM mein configure karo ❤️"
+        )
+    try:
+        _, value = message.text.split(maxsplit=1)
+        text, url = (part.strip() for part in value.split("|", 1))
+    except ValueError:
+        return await message.reply_text(
+            "Format: /set_sponsor_button Button Text | https://example.com"
+        )
+    if not is_valid_sponsor_button(text, url):
+        return await message.reply_text(
+            "Jaan, button text 1–64 characters ka aur URL valid http(s) link hona chahiye 😉"
+        )
+
+    await db.set_setting(
+        "SPONSOR_BUTTON",
+        {"enabled": True, "text": text, "url": url},
+    )
+    await message.reply_text("Sponsor button update ho gaya aur ON hai jaan ❤️")
+
+
+@Client.on_message(filters.command("disable_sponsor_button"))
+async def disable_sponsor_button(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    config = await db.get_setting("SPONSOR_BUTTON", default={})
+    if not isinstance(config, dict):
+        config = {}
+    config["enabled"] = False
+    await db.set_setting("SPONSOR_BUTTON", config)
+    await message.reply_text("Sponsor button OFF kar diya jaan ❤️")
+
+
+@Client.on_message(filters.command("enable_sponsor_button"))
+async def enable_sponsor_button(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    config = await db.get_setting("SPONSOR_BUTTON", default={})
+    if not isinstance(config, dict) or not is_valid_sponsor_button(
+        config.get("text"), config.get("url")
+    ):
+        return await message.reply_text(
+            "Pehle /set_sponsor_button se text aur URL set karo jaan ❤️"
+        )
+    config["enabled"] = True
+    await db.set_setting("SPONSOR_BUTTON", config)
+    await message.reply_text("Sponsor button phir se ON hai jaan ❤️")
 
 
 @Client.on_message(filters.command('remove_fsub'))

@@ -22,7 +22,7 @@ from info import *
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
-from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, get_flirty_interaction_message, is_resolution_locked, get_auto_delete_seconds, get_auto_delete_label, AUTO_DELETE_OPTIONS
+from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, get_flirty_interaction_message, is_resolution_locked, get_auto_delete_seconds, get_auto_delete_label, AUTO_DELETE_OPTIONS, get_sponsor_button
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files, get_search_suggestions
@@ -83,7 +83,9 @@ def _append_year_sort_controls(buttons, user_id):
     ])
 
 
-def _build_search_keyboard(files, user_id, key, next_offset, total_results, settings):
+def _build_search_keyboard(
+    files, user_id, key, next_offset, total_results, settings, sponsor_button=None
+):
     buttons = []
     if not settings.get("button", SINGLE_BUTTON):
         buttons.extend([
@@ -109,6 +111,8 @@ def _build_search_keyboard(files, user_id, key, next_offset, total_results, sett
             InlineKeyboardButton("Eᴘɪsᴏᴅᴇ", callback_data=f"epi#{user_id}")
         ]
     ])
+    if sponsor_button:
+        buttons.append([sponsor_button])
 
     if next_offset != "":
         page_size = 10 if settings.get("max_btn", True) else int(MAX_B_TN)
@@ -371,6 +375,9 @@ async def next_page(bot, query):
                 InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}")
             ])
         _append_year_sort_controls(btn, req)
+        sponsor_button = await get_sponsor_button()
+        if sponsor_button:
+            btn.append([sponsor_button])
         try:
             if settings['max_btn']:
                 if 0 < offset <= 10:
@@ -655,6 +662,7 @@ async def year_filter(bot, query):
             next_offset,
             total_results,
             settings,
+            sponsor_button=await get_sponsor_button(),
         )
         try:
             await _update_search_results_message(
@@ -686,7 +694,15 @@ async def year_filter(bot, query):
     temp.CHAT[query.from_user.id] = query.message.chat.id
     BUTTONS[key] = base_search
     RESULT_SORTS[key] = sort_by
-    buttons = _build_search_keyboard(files, userid, key, next_offset, total_results, settings)
+    buttons = _build_search_keyboard(
+        files,
+        userid,
+        key,
+        next_offset,
+        total_results,
+        settings,
+        sponsor_button=await get_sponsor_button(),
+    )
     try:
         await _update_search_results_message(query, settings, files, base_search, total_results, buttons)
     except MessageNotModified:
@@ -737,7 +753,15 @@ async def sort_search_results(bot, query):
     temp.CHAT[query.from_user.id] = query.message.chat.id
     BUTTONS[key] = search
     RESULT_SORTS[key] = sort_by
-    buttons = _build_search_keyboard(files, userid, key, next_offset, total_results, settings)
+    buttons = _build_search_keyboard(
+        files,
+        userid,
+        key,
+        next_offset,
+        total_results,
+        settings,
+        sponsor_button=await get_sponsor_button(),
+    )
     try:
         await _update_search_results_message(query, settings, files, search, total_results, buttons)
     except MessageNotModified:
@@ -2372,6 +2396,9 @@ async def auto_filter(
                 InlineKeyboardButton("VIP Send All", callback_data=f"sendfiles#{key}"),
             ])
         _append_year_sort_controls(btn, message.from_user.id)
+        sponsor_button = await get_sponsor_button()
+        if sponsor_button:
+            btn.append([sponsor_button])
     
         if offset != "":
             key = f"{message.chat.id}-{message.id}"

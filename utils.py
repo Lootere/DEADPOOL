@@ -24,6 +24,7 @@ from bs4 import BeautifulSoup
 import requests
 import aiohttp
 from shortzy import Shortzy
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -60,6 +61,41 @@ def get_auto_delete_label(settings):
         return "✘ Oғғ"
     minutes = seconds // 60
     return f"{minutes} Mɪɴ" + ("s" if minutes != 1 else "")
+
+
+def is_valid_sponsor_button(text, url):
+    if not isinstance(text, str) or not text.strip() or len(text.strip()) > 64:
+        return False
+    if (
+        not isinstance(url, str)
+        or not url
+        or len(url) > 2048
+        or any(char.isspace() for char in url)
+    ):
+        return False
+    try:
+        parsed_url = urlsplit(url)
+        parsed_url.port
+    except ValueError:
+        return False
+    return (
+        parsed_url.scheme.lower() in {"http", "https"}
+        and bool(parsed_url.netloc)
+        and not parsed_url.username
+        and not parsed_url.password
+    )
+
+
+async def get_sponsor_button():
+    config = await db.get_setting("SPONSOR_BUTTON", default={})
+    if not isinstance(config, dict) or config.get("enabled") is not True:
+        return None
+    text = config.get("text")
+    url = config.get("url")
+    if not is_valid_sponsor_button(text, url):
+        logger.warning("Ignoring invalid stored sponsor button configuration")
+        return None
+    return InlineKeyboardButton(text=text.strip(), url=url)
 
 BTN_URL_REGEX = re.compile(
     r"(\[([^\[]+?)\]\((buttonurl|buttonalert):(?:/{0,2})(.+?)(:same)?\))"

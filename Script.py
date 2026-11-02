@@ -301,6 +301,10 @@ Money heist S0E01
 • /add_fsub <channel_id> - add a global force-sub channel
 • /remove_fsub <channel_id> - remove a global force-sub channel in PM
 • /list_fsub - list global force-sub channels
+• /sponsor_button - view sponsor button status
+• /set_sponsor_button <text> | <url> - configure and enable sponsor button
+• /disable_sponsor_button - disable sponsor button
+• /enable_sponsor_button - re-enable saved sponsor button
 """
     ADMIC_TEX2T = """
 👇 ᴄᴏᴍᴍᴀɴᴅꜱ ʟɪꜱᴛ ꜰᴏʀ ᴀᴅᴍɪɴꜱ 👇
