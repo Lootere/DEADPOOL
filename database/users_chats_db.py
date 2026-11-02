@@ -10,6 +10,7 @@ import re
 import time
 import hashlib
 import random
+import secrets
 import string
     
 class Database:
@@ -26,6 +27,7 @@ class Database:
         self.links_col = self.db.links
         self.verify_id = self.db.verify_id
         self.settings_col = self.db.settings
+        self.playlists_col = self.db.playlists
         
     def new_user(self, id, name):
         return dict(
@@ -62,6 +64,151 @@ class Database:
             {"name": key},
             {"$set": {"value": value}},
             upsert=True)
+
+    @staticmethod
+    def _playlist_name_key(name):
+        return " ".join(str(name).split()).casefold()
+
+    async def get_user_playlists(self, user_id):
+        cursor = self.playlists_col.find(
+            {"user_id": int(user_id)},
+            {"playlist_id": 1, "name": 1, "items": 1, "share_token": 1},
+        ).sort("name", 1)
+        return await cursor.to_list(length=20)
+
+    async def create_playlist(self, user_id, name):
+        user_id = int(user_id)
+        name = " ".join(str(name).split())
+        name_key = self._playlist_name_key(name)
+        if not name or len(name) > 40:
+            raise ValueError("Playlist names must be between 1 and 40 characters")
+        existing = await self.playlists_col.find_one(
+            {"user_id": user_id, "name_key": name_key}
+        )
+        if existing:
+            raise ValueError("A playlist with that name already exists")
+        if await self.playlists_col.count_documents({"user_id": user_id}) >= 20:
+            raise ValueError("You can create up to 20 playlists")
+        result = await self.playlists_col.insert_one(
+            {
+                "user_id": user_id,
+                "playlist_id": secrets.token_urlsafe(9),
+                "name": name,
+                "name_key": name_key,
+                "items": [],
+                "share_token": None,
+                "created_at": datetime.utcnow(),
+            }
+        )
+        return await self.playlists_col.find_one({"_id": result.inserted_id})
+
+    async def add_playlist_item(self, user_id, playlist_id, title):
+        user_id = int(user_id)
+        title = " ".join(str(title).split())
+        if not title or len(title) > 120:
+            raise ValueError("Movie titles must be between 1 and 120 characters")
+        playlist = await self.playlists_col.find_one(
+            {"playlist_id": playlist_id, "user_id": user_id}
+        )
+        if not playlist:
+            raise ValueError("Playlist not found")
+        if any(item.casefold() == title.casefold() for item in playlist.get("items", [])):
+            return False
+        if len(playlist.get("items", [])) >= 25:
+            raise ValueError("Each playlist can contain up to 25 titles")
+        result = await self.playlists_col.update_one(
+            {
+                "playlist_id": playlist_id,
+                "user_id": user_id,
+                "$expr": {
+                    "$lt": [
+                        {"$size": {"$ifNull": ["$items", []]}},
+                        25,
+                    ]
+                },
+            },
+            {"$addToSet": {"items": title}},
+        )
+        if result.modified_count != 1:
+            latest = await self.playlists_col.find_one(
+                {"playlist_id": playlist_id, "user_id": user_id}
+            )
+            if latest and any(
+                item.casefold() == title.casefold()
+                for item in latest.get("items", [])
+            ):
+                return False
+            if latest and len(latest.get("items", [])) >= 25:
+                raise ValueError("Each playlist can contain up to 25 titles")
+            raise RuntimeError("Unable to add title to playlist")
+        return True
+
+    async def remove_playlist_item(self, user_id, name, title):
+        user_id = int(user_id)
+        name_key = self._playlist_name_key(name)
+        playlist = await self.playlists_col.find_one(
+            {"user_id": user_id, "name_key": name_key}
+        )
+        if not playlist:
+            return False
+        match = next(
+            (
+                item for item in playlist.get("items", [])
+                if item.casefold() == str(title).strip().casefold()
+            ),
+            None,
+        )
+        if match is None:
+            return False
+        result = await self.playlists_col.update_one(
+            {"_id": playlist["_id"], "user_id": user_id},
+            {"$pull": {"items": match}},
+        )
+        return result.modified_count == 1
+
+    async def delete_playlist(self, user_id, name):
+        result = await self.playlists_col.delete_one(
+            {
+                "user_id": int(user_id),
+                "name_key": self._playlist_name_key(name),
+            }
+        )
+        return result.deleted_count == 1
+
+    async def get_playlist_share_token(self, user_id, name):
+        playlist = await self.playlists_col.find_one(
+            {
+                "user_id": int(user_id),
+                "name_key": self._playlist_name_key(name),
+            }
+        )
+        if not playlist:
+            return None
+        token = playlist.get("share_token")
+        if not token:
+            token = secrets.token_urlsafe(9)
+            await self.playlists_col.update_one(
+                {
+                    "_id": playlist["_id"],
+                    "user_id": int(user_id),
+                    "share_token": {"$in": [None, ""]},
+                },
+                {"$set": {"share_token": token}},
+            )
+            playlist = await self.playlists_col.find_one(
+                {"_id": playlist["_id"], "user_id": int(user_id)}
+            )
+            token = playlist.get("share_token") if playlist else None
+        return token
+
+    async def get_shared_playlist(self, token):
+        if not token or len(token) > 32:
+            return None
+        playlist = await self.playlists_col.find_one(
+            {"share_token": token},
+            {"_id": 0, "name": 1, "items": 1},
+        )
+        return playlist
 
     async def get_force_sub_channels(self):
         channels = await self.get_setting("FORCE_SUB_CHANNELS", default=[])

@@ -130,6 +130,9 @@ def _append_year_sort_controls(buttons, user_id):
         InlineKeyboardButton("📅 Sᴀᴀʟ", callback_data=f"year#{user_id}"),
         InlineKeyboardButton("↕ Sᴏʀᴛ", callback_data=f"sort#{user_id}")
     ])
+    buttons.insert(3, [
+        InlineKeyboardButton("💾 Save to playlist", callback_data=f"playlist_save#{user_id}")
+    ])
 
 
 def _build_search_keyboard(
@@ -160,6 +163,9 @@ def _build_search_keyboard(
             InlineKeyboardButton("Eᴘɪsᴏᴅᴇ", callback_data=f"epi#{user_id}")
         ]
     ])
+    buttons.append([
+        InlineKeyboardButton("💾 Save to playlist", callback_data=f"playlist_save#{user_id}")
+    ])
     if sponsor_button:
         buttons.append([sponsor_button])
 
@@ -174,6 +180,94 @@ def _build_search_keyboard(
             InlineKeyboardButton("Nᴏ Mᴏʀᴇ Pᴀɢᴇs", callback_data="pages")
         ])
     return buttons
+
+
+@Client.on_callback_query(filters.regex(r"^playlist_save#"))
+async def choose_playlist_to_save_search(bot, query):
+    try:
+        _, requested_user = query.data.split("#", 1)
+        if int(requested_user) not in (0, query.from_user.id):
+            return await query.answer(
+                get_search_button_popup_message(query.from_user.id),
+                show_alert=True,
+            )
+        key = f"{query.message.chat.id}-{query.message.id}"
+        search = BUTTONS.get(key) or temp.KEYWORD.get(query.from_user.id)
+        if not search:
+            return await query.answer(
+                "Pehle movie search karo jaan 😘",
+                show_alert=True,
+            )
+
+        playlists = await db.get_user_playlists(query.from_user.id)
+        if not playlists:
+            playlist = await db.create_playlist(query.from_user.id, "Watchlist")
+            await db.add_playlist_item(
+                query.from_user.id,
+                playlist["playlist_id"],
+                search,
+            )
+            return await query.answer(
+                "Jaan, tumhari Watchlist bana ke movie save kar di ❤️",
+                show_alert=True,
+            )
+
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text=f"➕ {playlist['name']}",
+                    callback_data=(
+                        f"playlist_add#{query.from_user.id}#"
+                        f"{query.message.id}#{playlist['playlist_id']}"
+                    ),
+                )
+            ]
+            for playlist in playlists
+        ]
+        await bot.send_message(
+            chat_id=query.message.chat.id,
+            text="Kis playlist mein save karun jaan? 💜",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            reply_to_message_id=query.message.id,
+        )
+        await query.answer()
+    except Exception:
+        logger.exception("Playlist selection failed")
+        return await query.answer(
+            "Playlist open nahi hui jaan, thodi der baad try karo ❤️",
+            show_alert=True,
+        )
+
+
+@Client.on_callback_query(filters.regex(r"^playlist_add#"))
+async def add_search_to_playlist(bot, query):
+    try:
+        _, requested_user, source_message_id, playlist_id = query.data.split("#")
+        if int(requested_user) != query.from_user.id:
+            return await query.answer(
+                get_search_button_popup_message(query.from_user.id),
+                show_alert=True,
+            )
+        key = f"{query.message.chat.id}-{source_message_id}"
+        search = BUTTONS.get(key) or temp.KEYWORD.get(query.from_user.id)
+        if not search:
+            return await query.answer(
+                "Search expire ho gaya jaan, movie dobara search karo ❤️",
+                show_alert=True,
+            )
+        await db.add_playlist_item(query.from_user.id, playlist_id, search)
+        await query.message.edit_text(
+            "Movie tumhari playlist mein save ho gayi ❤️"
+        )
+        await query.answer()
+    except ValueError as error:
+        return await query.answer(str(error), show_alert=True)
+    except Exception:
+        logger.exception("Adding search to playlist failed")
+        return await query.answer(
+            "Movie save nahi hui jaan, thodi der baad try karo ❤️",
+            show_alert=True,
+        )
 
 
 async def _update_search_results_message(

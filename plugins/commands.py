@@ -252,6 +252,38 @@ async def start(client, message):
                 parse_mode=enums.ParseMode.HTML
             )
             return
+        if message.command[1].startswith("playlist_"):
+            token = message.command[1][len("playlist_"):]
+            playlist = await db.get_shared_playlist(token)
+            if not playlist:
+                return await message.reply_text(
+                    "Ye shared playlist ab available nahi hai jaan 🥺"
+                )
+            header = (
+                f"<b>💜 {html_escape(playlist['name'])}</b>\n"
+                "<i>Shared playlist — titles only</i>\n\n"
+            )
+            chunks = []
+            current = [header]
+            for number, title in enumerate(playlist.get("items", []), start=1):
+                row = f"{number}. {html_escape(str(title))}\n"
+                if sum(map(len, current)) + len(row) > 3500:
+                    chunks.append("".join(current))
+                    current = []
+                current.append(row)
+            if current:
+                chunks.append("".join(current))
+            await message.reply_text(
+                chunks[0],
+                parse_mode=enums.ParseMode.HTML,
+            )
+            for chunk in chunks[1:]:
+                await client.send_message(
+                    message.chat.id,
+                    chunk,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+            return
         if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
             buttons = [[
                         InlineKeyboardButton('☆ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ☆', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
@@ -688,6 +720,177 @@ async def weekly_leaderboard(client, message):
 
     await message.reply_text(
         "\n".join(rows),
+        parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
+def _playlist_command_argument(message):
+    parts = (message.text or "").split(maxsplit=1)
+    return parts[1].strip() if len(parts) == 2 else ""
+
+
+async def _find_user_playlist(user_id, name):
+    normalized_name = " ".join(name.split()).casefold()
+    playlists = await db.get_user_playlists(user_id)
+    return next(
+        (
+            playlist for playlist in playlists
+            if " ".join(playlist["name"].split()).casefold() == normalized_name
+        ),
+        None,
+    )
+
+
+@Client.on_message(filters.private & filters.command("playlist"))
+async def list_user_playlists(client, message):
+    playlists = await db.get_user_playlists(message.from_user.id)
+    if not playlists:
+        return await message.reply_text(
+            "Abhi koi playlist nahi hai jaan 💜\n"
+            "Banao: <code>/playlist_new Watchlist</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    rows = ["<b>💜 Tumhari playlists 💜</b>", ""]
+    rows.extend(
+        f"• {html_escape(playlist['name'])} — "
+        f"{len(playlist.get('items', []))}/25 titles"
+        for playlist in playlists
+    )
+    rows.extend([
+        "",
+        "<code>/playlist_new Watchlist</code> — nayi list",
+        "<code>/playlist_add Watchlist | Jailer</code> — title add karo",
+        "<code>/playlist_remove Watchlist | Jailer</code> — title hatao",
+        "<code>/playlist_delete Watchlist</code> — list delete karo",
+        "<code>/playlist_view &lt;name&gt;</code> — titles dekho",
+        "<code>/playlist_share &lt;name&gt;</code> — share link banao",
+    ])
+    await message.reply_text(
+        "\n".join(rows),
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.private & filters.command("playlist_new"))
+async def create_user_playlist(client, message):
+    name = _playlist_command_argument(message)
+    if not name:
+        return await message.reply_text(
+            "Aise banao jaan: <code>/playlist_new Anime Watchlist</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    try:
+        await db.create_playlist(message.from_user.id, name)
+    except ValueError as error:
+        return await message.reply_text(
+            f"Oops jaan, {html_escape(str(error))} 😉",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    await message.reply_text(
+        f"<b>Playlist “{html_escape(name)}” ban gayi 💜</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.private & filters.command("playlist_add"))
+async def add_title_to_playlist(client, message):
+    parts = _playlist_command_argument(message).split("|", 1)
+    if len(parts) != 2 or not all(part.strip() for part in parts):
+        return await message.reply_text(
+            "Aise add karo jaan:\n"
+            "<code>/playlist_add Watchlist | Jailer</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    name, title = (part.strip() for part in parts)
+    playlist = await _find_user_playlist(message.from_user.id, name)
+    if not playlist:
+        return await message.reply_text(
+            "Pehle <code>/playlist_new Watchlist</code> se playlist banao jaan ❤️",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    try:
+        added = await db.add_playlist_item(
+            message.from_user.id,
+            playlist["playlist_id"],
+            title,
+        )
+    except ValueError as error:
+        return await message.reply_text(
+            f"Oops jaan, {html_escape(str(error))} 😉",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    result = "Playlist mein add ho gaya jaan 💜" if added else "Ye title pehle se hai jaan 😉"
+    await message.reply_text(result)
+
+
+@Client.on_message(filters.private & filters.command("playlist_remove"))
+async def remove_title_from_playlist(client, message):
+    parts = _playlist_command_argument(message).split("|", 1)
+    if len(parts) != 2 or not all(part.strip() for part in parts):
+        return await message.reply_text(
+            "Aise remove karo jaan:\n"
+            "<code>/playlist_remove Watchlist | Jailer</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    name, title = (part.strip() for part in parts)
+    if not await db.remove_playlist_item(message.from_user.id, name, title):
+        return await message.reply_text("Playlist ya title nahi mila jaan 🥺")
+    await message.reply_text("Title playlist se remove ho gaya jaan ❤️")
+
+
+@Client.on_message(filters.private & filters.command("playlist_delete"))
+async def delete_user_playlist(client, message):
+    name = _playlist_command_argument(message)
+    if not name:
+        return await message.reply_text(
+            "Aise delete karo jaan: <code>/playlist_delete Watchlist</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    if not await db.delete_playlist(message.from_user.id, name):
+        return await message.reply_text("Ye playlist nahi mili jaan 🥺")
+    await message.reply_text("Playlist delete ho gayi jaan ❤️")
+
+
+@Client.on_message(filters.private & filters.command("playlist_view"))
+async def view_user_playlist(client, message):
+    name = _playlist_command_argument(message)
+    playlist = await _find_user_playlist(message.from_user.id, name) if name else None
+    if not playlist:
+        return await message.reply_text(
+            "Playlist nahi mili jaan. <code>/playlist</code> se apni lists dekho.",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    chunks = [[f"<b>💜 {html_escape(playlist['name'])}</b>\n"]]
+    for number, title in enumerate(playlist.get("items", []), start=1):
+        row = f"{number}. {html_escape(str(title))}\n"
+        if sum(map(len, chunks[-1])) + len(row) > 3500:
+            chunks.append([])
+        chunks[-1].append(row)
+    for chunk in chunks:
+        await message.reply_text(
+            "".join(chunk),
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+
+@Client.on_message(filters.private & filters.command("playlist_share"))
+async def share_user_playlist(client, message):
+    name = _playlist_command_argument(message)
+    playlist = await _find_user_playlist(message.from_user.id, name) if name else None
+    if not playlist:
+        return await message.reply_text(
+            "Aise share karo jaan: <code>/playlist_share Watchlist</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    if not playlist.get("items"):
+        return await message.reply_text("Pehle playlist mein koi title add karo jaan 💜")
+    token = await db.get_playlist_share_token(message.from_user.id, name)
+    if not token:
+        raise RuntimeError("Unable to create playlist share token")
+    link = f"https://t.me/{temp.U_NAME}?start=playlist_{token}"
+    await message.reply_text(
+        f"<b>Yeh raha tumhara share link jaan 💜</b>\n<code>{link}</code>",
         parse_mode=enums.ParseMode.HTML,
         disable_web_page_preview=True,
     )
