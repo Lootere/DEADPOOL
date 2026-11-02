@@ -20,7 +20,7 @@ from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from info import *
 from .pm_filter import auto_filter
-from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked, get_auto_delete_label, get_sponsor_button, is_valid_sponsor_button
+from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message, is_resolution_locked, get_auto_delete_label, get_sponsor_button, is_valid_sponsor_button, get_premium_plans, format_premium_plans, is_valid_premium_plan
 from database.connections_mdb import active_connection
 import re
 import json
@@ -282,7 +282,7 @@ async def start(client, message):
             reply_markup = InlineKeyboardMarkup(buttons)
             await message.reply_photo(
                 photo=(PREMIUM_PIC),
-                caption=script.PREMIUM_CMD,
+                caption=format_premium_plans(await get_premium_plans()),
                 reply_markup=reply_markup,
                 parse_mode=enums.ParseMode.HTML
             )
@@ -1269,6 +1269,97 @@ async def enable_sponsor_button(client, message):
     config["enabled"] = True
     await db.set_setting("SPONSOR_BUTTON", config)
     await message.reply_text("Sponsor button phir se ON hai jaan ❤️")
+
+
+@Client.on_message(filters.command("set_premium_plan"))
+async def set_premium_plan(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    if message.chat.type != enums.ChatType.PRIVATE:
+        return await message.reply_text("Jaan, premium plans PM mein manage karo ❤️")
+    try:
+        _, value = message.text.split(maxsplit=1)
+        parts = [part.strip() for part in value.split("|", 4)]
+    except ValueError:
+        parts = []
+    if len(parts) != 5:
+        return await message.reply_text(
+            "Format: /set_premium_plan id | name | price | duration | benefits"
+        )
+    plan = dict(zip(("id", "name", "price", "duration", "benefits"), parts))
+    if not is_valid_premium_plan(plan):
+        return await message.reply_text(
+            "Jaan, ID 1–32 characters, name 48, price 24, duration 32, "
+            "aur benefits 200 characters tak rakho ❤️"
+        )
+
+    plans = await get_premium_plans()
+    existing_index = next(
+        (index for index, current in enumerate(plans) if current["id"] == plan["id"]),
+        None,
+    )
+    if existing_index is None:
+        if len(plans) >= 10:
+            return await message.reply_text(
+                "Jaan, maximum 10 premium plans hi rakh sakte ho ❤️"
+            )
+        plans.append(plan)
+        action = "add"
+    else:
+        plans[existing_index] = plan
+        action = "update"
+    await db.set_setting("PREMIUM_PLANS", plans)
+    await message.reply_text(
+        f"✅ Plan {plan['id']} {action} ho gaya jaan ❤️\n\n"
+        + format_premium_plans(plans),
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command("remove_premium_plan"))
+async def remove_premium_plan(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    if message.chat.type != enums.ChatType.PRIVATE:
+        return await message.reply_text("Jaan, premium plans PM mein manage karo ❤️")
+    try:
+        plan_id = message.text.split(maxsplit=1)[1].strip()
+    except IndexError:
+        return await message.reply_text("Format: /remove_premium_plan <id>")
+
+    plans = await get_premium_plans()
+    remaining = [plan for plan in plans if plan["id"] != plan_id]
+    if len(remaining) == len(plans):
+        return await message.reply_text("Ye plan ID nahi mili jaan. /list_premium_plans dekho ❤️")
+    if not remaining:
+        return await message.reply_text(
+            "Jaan, kam se kam ek plan available rehna chahiye ❤️"
+        )
+    await db.set_setting("PREMIUM_PLANS", remaining)
+    await message.reply_text(
+        f"✅ Plan {html_escape(plan_id)} remove ho gaya jaan ❤️",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command("list_premium_plans"))
+async def list_premium_plans(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text("Jaan, ye command sirf bot admins ke liye hai 👑")
+    plans = await get_premium_plans()
+    plan_ids = "\n\n".join(
+        f"<code>{html_escape(plan['id'])}</code> — "
+        f"{html_escape(plan['name'])} — {html_escape(plan['price'])} / "
+        f"{html_escape(plan['duration'])}"
+        for plan in plans
+    )
+    await message.reply_text(
+        "<b>Premium plans 👇\n\n"
+        + (plan_ids or "Koi plan nahi hai jaan.")
+        + "\n\nSet/update: <code>/set_premium_plan id | name | price | duration | benefits</code>\n"
+        + "Remove: <code>/remove_premium_plan id</code></b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
 
 
 @Client.on_message(filters.command('remove_fsub'))

@@ -22,7 +22,7 @@ from info import *
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
-from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, get_flirty_interaction_message, is_resolution_locked, get_auto_delete_seconds, get_auto_delete_label, AUTO_DELETE_OPTIONS, get_sponsor_button
+from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message, get_flirty_interaction_message, is_resolution_locked, get_auto_delete_seconds, get_auto_delete_label, AUTO_DELETE_OPTIONS, get_sponsor_button, get_premium_plans, format_premium_plans
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files, get_search_suggestions
@@ -279,7 +279,7 @@ async def pm_text(bot, message):
     if await db.get_setting("PM_FILTER", default=PM_FILTER) or await db.has_premium_access(message.from_user.id):
         await auto_filter(bot, message)
     else:
-        await message.reply_text("<b>ɪғ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴛᴀᴋᴇ ᴀ ᴍᴏᴠɪᴇ ғʀᴏᴍ ᴛʜᴇ ʙᴏᴛ ᴛʜᴇɴ ʏᴏᴜ ᴡɪʟʟ ʜᴀᴠᴇ ᴛᴏ ᴘᴀʏ ᴛʜᴇ ᴘʀᴇᴍɪᴜᴍ ғᴏʀ ᴛʜᴇ ʙᴏᴛ, ᴏᴛʜᴇʀᴡɪsᴇ ʏᴏᴜ ᴄᴀɴ ᴛᴀᴋᴇ ᴛʜᴇ ᴍᴏᴠɪᴇ ғʀᴏᴍ ᴛʜᴇ ɢʀᴏᴜᴘ\n\nयदि आप बॉट से मूवी लेना चाहते हैं तो आपको बॉट का प्रीमियम लेना होगा\n\n 💸20 Rs Monthly ⏱️\n\nअन्यथा आप ग्रुप से मूवी ले सकते हैं.</b>", reply_markup=InlineKeyboardMarkup([
+        await message.reply_text("<b>ʙᴀʙʏ, ʙᴏᴛ ᴍᴇɪɴ ғɪʟᴇ ᴋᴇ ʟɪʏᴇ ᴘʀᴇᴍɪᴜᴍ ᴄʜᴀʜɪʏᴇ ❤️\n\nᴄᴜʀʀᴇɴᴛ ᴘʟᴀɴs, ᴘʀɪᴄᴇs ᴀᴜʀ ʙᴇɴᴇғɪᴛs ᴅᴇᴋʜɴᴇ ᴋᴇ ʟɪʏᴇ /plans ᴄʜᴇᴄᴋ ᴋᴀʀᴏ.\n\nᴀᴘɴɪ ᴍᴏᴠɪᴇ ɢʀᴏᴜᴘ sᴇ ʙʜɪ ʟᴇ sᴀᴋᴛᴇ ʜᴏ.</b>", reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("Gʀᴏᴜᴘ Hᴇʀᴇ", url=GRP_LNK)],
             [InlineKeyboardButton('✨Bʏ Pʀᴇᴍɪᴜᴍ: Sᴇᴀʀᴄʜ Pᴍ 🔍 🚫✨', callback_data=f'premium_info')]]))
 
@@ -1901,7 +1901,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.reply_photo(
             photo=(PREMIUM_PIC),
-            caption=script.PREMIUM_CMD,
+            caption=format_premium_plans(await get_premium_plans()),
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML
         )

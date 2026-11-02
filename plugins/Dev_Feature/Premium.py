@@ -5,7 +5,7 @@ import pytz
 from Script import script
 from asyncio import sleep
 from info import ADMINS, PREMIUM_LOGS, OWNER_USER_NAME, PREMIUM_PIC
-from utils import get_seconds
+from utils import get_seconds, get_premium_plans, format_premium_plans
 from database.users_chats_db import db 
 from pyrogram import Client, filters 
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
@@ -161,14 +161,17 @@ async def premium_user(client, message):
 
 @Client.on_message(filters.command("plans"))
 async def plan(client, message):
-    user_id = message.from_user.id 
-    users = message.from_user.mention 
     btn = [[
         InlineKeyboardButton("🔲 Qʀ ", callback_data='qr_info'),
         InlineKeyboardButton("💳 Uᴘɪ ", callback_data='upi_info')],
 	[InlineKeyboardButton("❌ ᴄʟᴏꜱᴇ ❌", callback_data="close_data")
     ]]
-    await message.reply_photo(photo=(PREMIUM_PIC), caption=script.PREMIUM_CMD, reply_markup=InlineKeyboardMarkup(btn))
+    await message.reply_photo(
+        photo=PREMIUM_PIC,
+        caption=format_premium_plans(await get_premium_plans()),
+        reply_markup=InlineKeyboardMarkup(btn),
+        parse_mode="html",
+    )
     
 # This code has been modified by @Looteredev
 # Please do not remove this credit

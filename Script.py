@@ -301,6 +301,9 @@ Money heist S0E01
 • /add_fsub <channel_id> - add a global force-sub channel
 • /remove_fsub <channel_id> - remove a global force-sub channel in PM
 • /list_fsub - list global force-sub channels
+• /set_premium_plan <id> | <name> | <price> | <duration> | <benefits> - add/update a plan
+• /remove_premium_plan <id> - remove a plan
+• /list_premium_plans - list current plans
 • /sponsor_button - view sponsor button status
 • /set_sponsor_button <text> | <url> - configure and enable sponsor button
 • /disable_sponsor_button - disable sponsor button
@@ -326,30 +329,13 @@ Money heist S0E01
 """
     
     PREMIUM_CMD = """<b>
-💵 <i> ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs </ɪ>
+💎 VENOM PREMIUM 💎
 
-1. 20₹ = 1ᴍᴏɴᴛʜ
-2. 38₹ = 2ᴍᴏɴᴛʜ
-3. 55₹ = 3ᴍᴏɴᴛʜ
-4. 110₹ = 6ᴍᴏɴᴛʜ
+ʟᴀᴛᴇsᴛ ᴘʟᴀɴs, ᴘʀɪᴄᴇs, ᴅᴜʀᴀᴛɪᴏɴs ᴀᴜʀ ʙᴇɴᴇғɪᴛs ᴅᴇᴋʜɴᴇ ᴋᴇ ʟɪʏᴇ /plans ᴄʜᴇᴄᴋ ᴋᴀʀᴏ ❤️
 
-==========================
-🎁 <u>ᴘʀᴇᴍɪᴜᴍ ғᴇᴀᴛᴜʀᴇs</u> :
+➛ ᴀᴘɴᴀ ᴀᴄᴛɪᴠᴇ ᴘʟᴀɴ /myplan sᴇ ᴄʜᴇᴄᴋ ᴋᴀʀᴏ.
 
-○ sᴇᴀʀᴄʜ ᴍᴏᴠɪᴇ ɪɴ ᴛʜᴇ ʙᴏᴛ
-○ ɴᴏ ғɪʟᴇ ʟɪᴍɪᴛs
-○ ɢᴇᴛ ᴜɴʟɪᴍɪᴛᴇᴅ ғɪʟᴇs
-○ ɴᴏ ʟɪᴍɪᴛs ғᴏʀ sᴇɴᴅ ᴀʟʟ ʙᴜᴛᴛᴏɴ
-○ ɴᴏ ɴᴇᴇᴅ ᴛᴏ ᴏᴘᴇɴ ʟɪɴᴋꜱ
-○ ɴᴏ ɴᴇᴇᴅ ᴠᴇʀɪғʏ
-○ ᴅɪʀᴇᴄᴛ ғɪʟᴇs   
-○ ᴀᴅ-ғʀᴇᴇ ᴇxᴘᴇʀɪᴇɴᴄᴇ 
-○ ᴜɴʟɪᴍɪᴛᴇᴅ ᴍᴏᴠɪᴇs & sᴇʀɪᴇs        
-
-==========================
-➛ ᴄʜᴇᴄᴋ ʏᴏᴜʀ ᴀᴄᴛɪᴠᴇ ᴘʟᴀɴ ʙʏ ᴜꜱɪɴɢ : /myplan
-
-‼️ ᴍᴜsᴛ sᴇɴᴅ sᴄʀᴇᴇɴsʜᴏᴛ ᴀғᴛᴇʀ ᴘᴀʏᴍᴇɴᴛ</b>"""
+‼️ ᴘᴀʏᴍᴇɴᴛ ᴋᴇ ʙᴀᴀᴅ sᴄʀᴇᴇɴsʜᴏᴛ sᴇɴᴅ ᴋᴀʀᴏ</b>"""
 
     
     UPI_TXT = """<b>   

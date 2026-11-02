@@ -1,6 +1,8 @@
 # This code has been modified by @Looteredev
 # Please do not remove this credit
 import logging
+import re
+from html import escape as html_escape
 from pyrogram.errors import InputUserDeactivated, UserNotParticipant, FloodWait, UserIsBlocked, PeerIdInvalid, ChatAdminRequired, MessageIdInvalid, EmoticonInvalid, ReactionInvalid
 from info import *
 from imdb import Cinemagoer 
@@ -61,6 +63,82 @@ def get_auto_delete_label(settings):
         return "✘ Oғғ"
     minutes = seconds // 60
     return f"{minutes} Mɪɴ" + ("s" if minutes != 1 else "")
+
+
+DEFAULT_PREMIUM_PLANS = [
+    {
+        "id": "month_1",
+        "name": "1 Month",
+        "price": "₹20",
+        "duration": "30 days",
+        "benefits": "Unlimited downloads and search, no daily limits, no verification, ad-free.",
+    },
+    {
+        "id": "month_2",
+        "name": "2 Months",
+        "price": "₹38",
+        "duration": "60 days",
+        "benefits": "Unlimited downloads and search, no daily limits, no verification, ad-free.",
+    },
+    {
+        "id": "month_3",
+        "name": "3 Months",
+        "price": "₹55",
+        "duration": "90 days",
+        "benefits": "Unlimited downloads and search, no daily limits, no verification, ad-free.",
+    },
+    {
+        "id": "month_6",
+        "name": "6 Months",
+        "price": "₹110",
+        "duration": "180 days",
+        "benefits": "Unlimited downloads and search, no daily limits, no verification, ad-free.",
+    },
+]
+
+
+def is_valid_premium_plan(plan):
+    if not isinstance(plan, dict):
+        return False
+    plan_id = plan.get("id")
+    if not isinstance(plan_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,32}", plan_id):
+        return False
+    for field, max_length in (("name", 48), ("price", 24), ("duration", 32), ("benefits", 200)):
+        value = plan.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value.strip()) > max_length:
+            return False
+    return True
+
+
+async def get_premium_plans():
+    plans = await db.get_setting("PREMIUM_PLANS", default=None)
+    if plans is None:
+        return [plan.copy() for plan in DEFAULT_PREMIUM_PLANS]
+    if (
+        not isinstance(plans, list)
+        or len(plans) > 10
+        or not all(is_valid_premium_plan(plan) for plan in plans)
+        or len({plan["id"] for plan in plans}) != len(plans)
+    ):
+        raise ValueError("PREMIUM_PLANS contains invalid configuration")
+    return plans
+
+
+def format_premium_plans(plans):
+    if not plans:
+        return "<b>Jaan, abhi koi premium plan available nahi hai ❤️</b>"
+    entries = []
+    for index, plan in enumerate(plans, start=1):
+        entries.append(
+            f"{index}. <b>{html_escape(plan['name'])}</b> — "
+            f"{html_escape(plan['price'])} / {html_escape(plan['duration'])}\n"
+            f"   {html_escape(plan['benefits'])}"
+        )
+    return (
+        "<b>💎 VENOM PREMIUM PLANS 💎</b>\n\n"
+        + "\n\n".join(entries)
+        + "\n\nJaan, apna plan choose karke payment screenshot bhejo ❤️"
+    )
 
 
 def is_valid_sponsor_button(text, url):
