@@ -5,6 +5,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from info import CHANNELS, POST_CHANNELS
 from database.ia_filterdb import save_file, get_file_details
 from utils import get_poster, get_size, temp
+from .series_notifications import notify_series_trackers
 from os import environ
 import logging
 import re
@@ -50,6 +51,15 @@ async def media(bot, message):
     media.file_type = file_type
     media.caption = message.caption
     success, file_id = await save_file(media)
+
+    if success:
+        try:
+            await notify_series_trackers(bot, media)
+        except Exception:
+            logging.exception(
+                "Series notification failed for newly indexed file %r",
+                getattr(media, "file_name", "unknown"),
+            )
     
     if success and file_id:
         file_details = await get_file_details(file_id)

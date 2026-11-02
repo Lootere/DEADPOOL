@@ -730,6 +730,72 @@ def _playlist_command_argument(message):
     return parts[1].strip() if len(parts) == 2 else ""
 
 
+@Client.on_message(filters.private & filters.command("trackseries"))
+async def track_series(client, message):
+    title = _playlist_command_argument(message)
+    if not title:
+        return await message.reply_text(
+            "Aise track karo jaan: <code>/trackseries The Boys</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    try:
+        added = await db.add_series_track(
+            message.from_user.id,
+            title,
+            message.from_user.first_name or "User",
+        )
+    except ValueError as error:
+        return await message.reply_text(
+            f"Oops jaan, {html_escape(str(error))} 😉",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    if added:
+        return await message.reply_text(
+            f"<b>{html_escape(title)}</b> track ho gayi jaan 💜 "
+            "Naya episode index hote hi bataungi.",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    await message.reply_text("Ye series pehle se tumhari tracking list mein hai jaan 😉")
+
+
+@Client.on_message(filters.private & filters.command("untrackseries"))
+async def untrack_series(client, message):
+    title = _playlist_command_argument(message)
+    if not title:
+        return await message.reply_text(
+            "Aise band karo jaan: <code>/untrackseries The Boys</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    if not await db.remove_series_track(message.from_user.id, title):
+        return await message.reply_text("Ye series tumhari list mein nahi mili jaan 🥺")
+    await message.reply_text(
+        f"<b>{html_escape(title)}</b> ki tracking band kar di jaan ❤️",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.private & filters.command("myseries"))
+async def list_tracked_series(client, message):
+    tracks = await db.get_user_series_tracks(message.from_user.id)
+    if not tracks:
+        return await message.reply_text(
+            "Abhi koi series track nahi ho rahi jaan 💜\n"
+            "Shuru karo: <code>/trackseries The Boys</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    rows = ["<b>💜 Tumhari tracked series 💜</b>", ""]
+    rows.extend(f"• {html_escape(track['title'])}" for track in tracks)
+    rows.extend([
+        "",
+        "<code>/trackseries &lt;series name&gt;</code> — track karo",
+        "<code>/untrackseries &lt;series name&gt;</code> — tracking band karo",
+    ])
+    await message.reply_text(
+        "\n".join(rows),
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
 async def _find_user_playlist(user_id, name):
     normalized_name = " ".join(name.split()).casefold()
     playlists = await db.get_user_playlists(user_id)

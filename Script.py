@@ -261,6 +261,9 @@ Money heist S0E01
 • /playlist_delete - ᴅᴇʟᴇᴛᴇ ᴀ ᴘʟᴀʏʟɪsᴛ.
 • /playlist_view - ᴠɪᴇᴡ ᴘʟᴀʏʟɪsᴛ ᴛɪᴛʟᴇs.
 • /playlist_share - ɢᴇᴛ ᴀ sʜᴀʀᴇᴀʙʟᴇ ᴘʟᴀʏʟɪsᴛ ʟɪɴᴋ.
+• /trackseries - ᴛʀᴀᴄᴋ ᴀ sᴇʀɪᴇs ғᴏʀ ɴᴇᴡ ᴇᴘɪsᴏᴅᴇ ᴀʟᴇʀᴛs.
+• /untrackseries - sᴛᴏᴘ ᴛʀᴀᴄᴋɪɴɢ ᴀ sᴇʀɪᴇs.
+• /myseries - ᴠɪᴇᴡ ʏᴏᴜʀ ᴛʀᴀᴄᴋᴇᴅ sᴇʀɪᴇs.
 • /sticker_id - ᴛᴇʟᴇɢʀᴀᴍ sᴛɪᴄᴋᴇʀ ɪᴅ
 """
 

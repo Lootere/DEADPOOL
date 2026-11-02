@@ -66,6 +66,104 @@ class Database:
             upsert=True)
 
     @staticmethod
+    def _series_key(title):
+        return " ".join(re.sub(r"[^\w]+", " ", str(title).casefold()).split())
+
+    async def get_user_series_tracks(self, user_id):
+        user = await self.col.find_one(
+            {"id": int(user_id)},
+            {"tracked_series": 1},
+        )
+        return user.get("tracked_series", []) if user else []
+
+    async def add_series_track(self, user_id, title, user_name):
+        user_id = int(user_id)
+        title = " ".join(str(title).split())
+        series_key = self._series_key(title)
+        if not title or len(title) > 80 or not series_key:
+            raise ValueError("Series names must be between 1 and 80 characters")
+
+        await self.col.update_one(
+            {"id": user_id},
+            {"$setOnInsert": self.new_user(user_id, user_name)},
+            upsert=True,
+        )
+        user = await self.col.find_one(
+            {"id": user_id, "tracked_series.series_key": series_key},
+            {"_id": 1},
+        )
+        if user:
+            return False
+
+        result = await self.col.update_one(
+            {
+                "id": user_id,
+                "$expr": {
+                    "$lt": [
+                        {"$size": {"$ifNull": ["$tracked_series", []]}},
+                        20,
+                    ]
+                },
+            },
+            {
+                "$addToSet": {
+                    "tracked_series": {
+                        "series_key": series_key,
+                        "title": title,
+                        "notified_episodes": [],
+                    }
+                }
+            },
+        )
+        if result.modified_count == 1:
+            return True
+
+        user = await self.col.find_one({"id": user_id}, {"tracked_series": 1})
+        if user and any(
+            track.get("series_key") == series_key
+            for track in user.get("tracked_series", [])
+        ):
+            return False
+        raise ValueError("You can track up to 20 series")
+
+    async def remove_series_track(self, user_id, title):
+        series_key = self._series_key(title)
+        result = await self.col.update_one(
+            {"id": int(user_id), "tracked_series.series_key": series_key},
+            {"$pull": {"tracked_series": {"series_key": series_key}}},
+        )
+        return result.modified_count == 1
+
+    async def get_series_trackers(self, series_key):
+        cursor = self.col.find(
+            {"tracked_series.series_key": series_key},
+            {"id": 1},
+        )
+        return [int(user["id"]) async for user in cursor]
+
+    async def claim_series_episode_notification(self, user_id, series_key, episode_key):
+        result = await self.col.update_one(
+            {
+                "id": int(user_id),
+                "tracked_series": {
+                    "$elemMatch": {
+                        "series_key": series_key,
+                        "notified_episodes": {"$ne": episode_key},
+                    }
+                },
+            },
+            {
+                "$push": {
+                    "tracked_series.$.notified_episodes": {
+                        "$each": [episode_key],
+                        "$slice": -200,
+                    }
+                }
+            },
+        )
+        return result.modified_count == 1
+
+    @staticmethod
     def _playlist_name_key(name):
         return " ".join(str(name).split()).casefold()
 

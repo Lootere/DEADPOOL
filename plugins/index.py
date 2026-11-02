@@ -16,6 +16,7 @@ import time
 from database.users_chats_db import db
 from utils import broadcast_messages
 import asyncio
+from .series_notifications import notify_series_trackers
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 lock = asyncio.Lock()
@@ -243,6 +244,13 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot):
                 aynav, vnay = await save_file(media)
                 if aynav:
                     total_files += 1
+                    try:
+                        await notify_series_trackers(bot, media)
+                    except Exception:
+                        logger.exception(
+                            "Series notification failed for newly indexed file %r",
+                            getattr(media, "file_name", "unknown"),
+                        )
                 elif vnay == 0:
                     duplicate += 1
                 elif vnay == 2:

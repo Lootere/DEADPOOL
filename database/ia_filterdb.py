@@ -296,6 +296,39 @@ def _suggestion_title(file_name):
     return title or _clean_display_file_name(file_name)
 
 
+def extract_series_episode(file_name):
+    match = re.search(
+        r"\bS(?P<s_season>\d{1,2})[\s._-]*E(?P<s_episode>\d{1,3})\b"
+        r"|\b(?P<x_season>\d{1,2})\s*[xX]\s*(?P<x_episode>\d{1,3})\b"
+        r"|\bSeason\s*(?P<w_season>\d{1,2})[\s._-]*"
+        r"(?:Episode|Ep|E)\s*(?P<w_episode>\d{1,3})\b",
+        str(file_name or ""),
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    season = next(
+        int(match.group(name))
+        for name in ("s_season", "x_season", "w_season")
+        if match.group(name) is not None
+    )
+    episode = next(
+        int(match.group(name))
+        for name in ("s_episode", "x_episode", "w_episode")
+        if match.group(name) is not None
+    )
+    series_name = _suggestion_title(str(file_name)[:match.start()])
+    if not series_name:
+        return None
+    return {
+        "title": series_name,
+        "season": season,
+        "episode": episode,
+        "episode_key": f"s{season:02d}e{episode:02d}",
+    }
+
+
 def _normalized_suggestion_text(value):
     return " ".join(re.findall(r"[a-z0-9]+", str(value).lower()))
 
