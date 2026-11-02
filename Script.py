@@ -342,6 +342,12 @@ Money heist S0E01
 • /deletefiles - <code>ᴅᴇʟᴇᴛᴇ CᴀᴍRɪᴘ ᴀɴᴅ PʀᴇDVD ғɪʟᴇs ғʀᴏᴍ ᴛʜᴇ ʙᴏᴛ's ᴅᴀᴛᴀʙᴀsᴇ.</code>
 • /deleteall - ᴅᴇʟᴇᴛᴇ ᴀʟʟ ɪɴᴅᴇxᴇs ғɪʟᴇs
 • /send - <code>ꜱᴇɴᴅ ᴍᴇꜱꜱᴀɢᴇ ᴛᴏ ᴀ ᴘᴀʀᴛɪᴄᴜʟᴀʀ ᴜꜱᴇʀ.</code>
+• /multidb - <code>ᴠɪᴇᴡ ᴀʟʟ ᴅᴀᴛᴀʙᴀsᴇs sᴛᴀᴛᴜs, ʜᴇᴀʟᴛʜ & sᴛᴏʀᴀɢᴇ</code>
+• /toggle_db &lt;id&gt; - <code>ᴛᴜʀɴ ᴀ ᴅᴀᴛᴀʙᴀsᴇ ON ᴏʀ OFF</code>
+• /switch_db &lt;id&gt; - <code>sᴡɪᴛᴄʜ ᴀᴄᴛɪᴠᴇ ɪɴᴅᴇxɪɴɢ ᴄʟᴜsᴛᴇʀ</code>
+• /add_db &lt;uri&gt; - <code>ᴀᴅᴅ ᴀ ɴᴇᴡ ᴍᴏɴɢᴏᴅʙ ᴄʟᴜsᴛᴇʀ</code>
+• /del_db &lt;id&gt; - <code>ᴅɪsᴄᴏɴɴᴇᴄᴛ ᴀ sᴇᴄᴏɴᴅᴀʀʏ ᴄʟᴜsᴛᴇʀ</code>
+• /test_db - <code>ᴛᴇsᴛ ʟᴀᴛᴇɴᴄʏ ᴏғ ᴀʟʟ ᴄʟᴜsᴛᴇʀs</code>
 """
     
     PREMIUM_CMD = """<b>

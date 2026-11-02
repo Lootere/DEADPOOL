@@ -2204,9 +2204,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await _edit_help_page(client, query, script.ADMIC_TXT, reply_markup)
         
     elif query.data == "admic2":
-        buttons = [[
-            InlineKeyboardButton('⬅︎ ʙᴀᴄᴋ', callback_data='admic')
-        ]]
+        buttons = [
+            [InlineKeyboardButton('🗄️ Multi-DB Status', callback_data='multidb#main')],
+            [InlineKeyboardButton('⬅︎ ʙᴀᴄᴋ', callback_data='admic')]
+        ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(client, query, script.ADMIC_TEX2T, reply_markup)
 

@@ -2540,7 +2540,7 @@ from Lootere.utils.multidb_manager import (
 )
 
 
-@Client.on_message(filters.command(["multidb", "dbstatus"]) & filters.private)
+@Client.on_message(filters.command(["multidb", "dbstatus"]))
 async def multidb_status_command(client: Client, message: Message):
     if not _is_bot_admin(message.from_user.id):
         return await message.reply_text("<b>This command is only for Bot Admins.</b>")
@@ -2551,7 +2551,7 @@ async def multidb_status_command(client: Client, message: Message):
     await message.reply_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
 
 
-@Client.on_message(filters.command(["add_db", "adddb"]) & filters.private)
+@Client.on_message(filters.command(["add_db", "adddb"]))
 async def add_database_command(client: Client, message: Message):
     if not _is_bot_admin(message.from_user.id):
         return await message.reply_text("<b>This command is only for Bot Admins.</b>")
@@ -2590,7 +2590,7 @@ async def add_database_command(client: Client, message: Message):
     )
 
 
-@Client.on_message(filters.command(["del_db", "deldb"]) & filters.private)
+@Client.on_message(filters.command(["del_db", "deldb"]))
 async def remove_database_command(client: Client, message: Message):
     if not _is_bot_admin(message.from_user.id):
         return await message.reply_text("<b>This command is only for Bot Admins.</b>")
@@ -2604,7 +2604,7 @@ async def remove_database_command(client: Client, message: Message):
     await message.reply_text(f"<b>{msg}</b>", parse_mode=enums.ParseMode.HTML)
 
 
-@Client.on_message(filters.command(["switch_db", "switchdb"]) & filters.private)
+@Client.on_message(filters.command(["switch_db", "switchdb"]))
 async def switch_database_target_command(client: Client, message: Message):
     if not _is_bot_admin(message.from_user.id):
         return await message.reply_text("<b>This command is only for Bot Admins.</b>")
@@ -2618,7 +2618,7 @@ async def switch_database_target_command(client: Client, message: Message):
     await message.reply_text(f"<b>{msg}</b>", parse_mode=enums.ParseMode.HTML)
 
 
-@Client.on_message(filters.command(["toggle_db", "toggledb"]) & filters.private)
+@Client.on_message(filters.command(["toggle_db", "toggledb"]))
 async def toggle_database_command(client: Client, message: Message):
     if not _is_bot_admin(message.from_user.id):
         return await message.reply_text("<b>This command is only for Bot Admins.</b>")
@@ -2641,7 +2641,7 @@ async def toggle_database_command(client: Client, message: Message):
     await message.reply_text(f"<b>{msg}</b>", parse_mode=enums.ParseMode.HTML)
 
 
-@Client.on_message(filters.command(["set_db_priority", "setpriority"]) & filters.private)
+@Client.on_message(filters.command(["set_db_priority", "setpriority"]))
 async def set_priority_command(client: Client, message: Message):
     if not _is_bot_admin(message.from_user.id):
         return await message.reply_text("<b>This command is only for Bot Admins.</b>")
@@ -2656,8 +2656,9 @@ async def set_priority_command(client: Client, message: Message):
     await message.reply_text(f"<b>{msg}</b>", parse_mode=enums.ParseMode.HTML)
 
 
-@Client.on_message(filters.command(["test_db", "testdb"]) & filters.private)
+@Client.on_message(filters.command(["test_db", "testdb"]))
 async def test_database_command(client: Client, message: Message):
+
     if not _is_bot_admin(message.from_user.id):
         return await message.reply_text("<b>This command is only for Bot Admins.</b>")
 
