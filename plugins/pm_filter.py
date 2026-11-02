@@ -33,6 +33,7 @@ TIMEZONE = "Asia/Kolkata"
 import logging
 from urllib.parse import quote_plus
 from Lootere.utils.file_properties import get_name, get_hash, get_media_file_size
+from Lootere.utils.search_ui_style import apply_search_keyboard_style
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -122,7 +123,7 @@ def _search_suggestion_buttons(suggestions, user_id, chat_id):
                 callback_data=f"search_suggestion#{user_id}#{token}",
             )
         ])
-    return buttons
+    return apply_search_keyboard_style(buttons)
 
 
 def _append_year_sort_controls(buttons, user_id):
@@ -179,7 +180,7 @@ def _build_search_keyboard(
         buttons.append([
             InlineKeyboardButton("Nᴏ Mᴏʀᴇ Pᴀɢᴇs", callback_data="pages")
         ])
-    return buttons
+    return apply_search_keyboard_style(buttons)
 
 
 @Client.on_callback_query(filters.regex(r"^playlist_save#"))
@@ -227,7 +228,7 @@ async def choose_playlist_to_save_search(bot, query):
         await bot.send_message(
             chat_id=query.message.chat.id,
             text="Kis playlist mein save karun jaan? 💜",
-            reply_markup=InlineKeyboardMarkup(buttons),
+            reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(buttons)),
             reply_to_message_id=query.message.id,
         )
         await query.answer()
@@ -273,7 +274,7 @@ async def add_search_to_playlist(bot, query):
 async def _update_search_results_message(
     query, settings, files, search, total_results, buttons, caption=None
 ):
-    markup = InlineKeyboardMarkup(buttons)
+    markup = InlineKeyboardMarkup(apply_search_keyboard_style(buttons))
     if settings.get("button", SINGLE_BUTTON):
         if caption is None:
             caption = await get_text(settings, "0.00", files, query, total_results, search)
@@ -596,6 +597,7 @@ async def next_page(bot, query):
                         InlineKeyboardButton("𝐍𝐄𝐗𝐓 ➪", callback_data=f"next_{req}_{key}_{n_offset}")
                     ],
                 )
+        btn = apply_search_keyboard_style(btn)
         if settings.get("button", SINGLE_BUTTON):
             cur_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
             time_difference = timedelta(hours=cur_time.hour, minutes=cur_time.minute, seconds=(cur_time.second+(cur_time.microsecond/1000000))) - timedelta(hours=curr_time.hour, minutes=curr_time.minute, seconds=(curr_time.second+(curr_time.microsecond/1000000)))
@@ -700,6 +702,7 @@ async def language_check(bot, query):
                 btn.append(
                     [InlineKeyboardButton(text="𝐍𝐎 𝐌𝐎𝐑𝐄 𝐏𝐀𝐆𝐄𝐒 𝐀𝐕𝐀𝐈𝐋𝐀𝐁𝐋𝐄",callback_data="pages")]
                 )
+            btn = apply_search_keyboard_style(btn)
             if settings.get("button", SINGLE_BUTTON):
                 cur_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
                 time_difference = timedelta(hours=cur_time.hour, minutes=cur_time.minute, seconds=(cur_time.second+(cur_time.microsecond/1000000))) - timedelta(hours=curr_time.hour, minutes=curr_time.minute, seconds=(curr_time.second+(curr_time.microsecond/1000000)))
@@ -752,7 +755,7 @@ async def select_language(bot, query):
     ]]
     try:
        await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(btn)
+           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
        )
     except MessageNotModified:
         pass
@@ -781,7 +784,7 @@ async def year_filter(bot, query):
         buttons.append([InlineKeyboardButton("Sᴀʙʜɪ Sᴀᴀʟ", callback_data=f"year#{userid}#home")])
         buttons.append([InlineKeyboardButton("Gᴏ Bᴀᴄᴋ", callback_data=f"year#{userid}#back")])
         try:
-            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(buttons)))
         except MessageNotModified:
             pass
         await query.answer()
@@ -883,7 +886,7 @@ async def sort_search_results(bot, query):
             InlineKeyboardButton(label, callback_data=f"sort#{userid}#{sort_by}")
         ] for sort_by, label in options.items()]
         try:
-            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(buttons)))
         except MessageNotModified:
             pass
         await query.answer()
@@ -1013,6 +1016,7 @@ async def quality_check(bot, query):
                 btn.append(
                     [InlineKeyboardButton(text="𝐍𝐎 𝐌𝐎𝐑𝐄 𝐏𝐀𝐆𝐄𝐒 𝐀𝐕𝐀𝐈𝐋𝐀𝐁𝐋𝐄",callback_data="pages")]
                 )
+            btn = apply_search_keyboard_style(btn)
             if settings.get("button", SINGLE_BUTTON):
                 cur_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
                 time_difference = timedelta(hours=cur_time.hour, minutes=cur_time.minute, seconds=(cur_time.second+(cur_time.microsecond/1000000))) - timedelta(hours=curr_time.hour, minutes=curr_time.minute, seconds=(curr_time.second+(curr_time.microsecond/1000000)))
@@ -1063,7 +1067,7 @@ async def select_quality(bot, query):
     ]]
     try:
        await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(btn)
+           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
        )
     except MessageNotModified:
         pass
@@ -1160,6 +1164,7 @@ async def seasons_check(bot, query):
                 btn.append(
                     [InlineKeyboardButton(text="𝐍𝐎 𝐌𝐎𝐑𝐄 𝐏𝐀𝐆𝐄𝐒 𝐀𝐕𝐀𝐈𝐋𝐀𝐁𝐋𝐄",callback_data="pages")]
                 )
+            btn = apply_search_keyboard_style(btn)
             if settings.get("button", SINGLE_BUTTON):
                 cur_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
                 time_difference = timedelta(hours=cur_time.hour, minutes=cur_time.minute, seconds=(cur_time.second+(cur_time.microsecond/1000000))) - timedelta(hours=curr_time.hour, minutes=curr_time.minute, seconds=(curr_time.second+(curr_time.microsecond/1000000)))
@@ -1262,7 +1267,7 @@ async def select_seasons(bot, query):
     ]]
     try:
        await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(btn)
+           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
        )
     except MessageNotModified:
         pass
@@ -1353,6 +1358,7 @@ async def episode_check(bot, query):
                 btn.append(
                     [InlineKeyboardButton(text="𝐍𝐎 𝐌𝐎𝐑𝐄 𝐏𝐀𝐆𝐄𝐒 𝐀𝐕𝐀𝐈𝐋𝐀𝐁𝐋𝐄",callback_data="pages")]
                 )
+            btn = apply_search_keyboard_style(btn)
             if settings.get("button", SINGLE_BUTTON):
                 cur_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
                 time_difference = timedelta(hours=cur_time.hour, minutes=cur_time.minute, seconds=(cur_time.second+(cur_time.microsecond/1000000))) - timedelta(hours=curr_time.hour, minutes=curr_time.minute, seconds=(curr_time.second+(curr_time.microsecond/1000000)))
@@ -1408,7 +1414,7 @@ async def select_episode2(bot, query):
     ]]
     try:
        await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(btn)
+           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
        )
     except MessageNotModified:
         pass
@@ -1445,7 +1451,7 @@ async def select_episode(bot, query):
     ]]
     try:
        await query.edit_message_reply_markup(
-           reply_markup=InlineKeyboardMarkup(btn)
+           reply_markup=InlineKeyboardMarkup(apply_search_keyboard_style(btn))
        )
     except MessageNotModified:
         pass
@@ -2589,6 +2595,7 @@ async def auto_filter(
             btn.append(
                 [InlineKeyboardButton(text="𝐍𝐎 𝐌𝐎𝐑𝐄 𝐏𝐀𝐆𝐄𝐒 𝐀𝐕𝐀𝐈𝐋𝐀𝐁𝐋𝐄",callback_data="pages")]
             )
+        btn = apply_search_keyboard_style(btn)
         imdb = None
         if settings.get("imdb", IMDB):
             stage = "fetching optional IMDb details"
@@ -2738,6 +2745,7 @@ async def advantage_spell_chok(client, message):
     buttons.append(
         [InlineKeyboardButton(text="🚫 ᴄʟᴏsᴇ 🚫", callback_data='close_data')]
     )
+    buttons = apply_search_keyboard_style(buttons)
     d = await message.reply_text(text=script.CUDNT_FND.format(search), reply_markup=InlineKeyboardMarkup(buttons), reply_to_message_id=message.id)
     await asyncio.sleep(120)
     await d.delete()
