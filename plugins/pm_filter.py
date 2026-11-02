@@ -8,6 +8,7 @@ import random
 import os
 import secrets
 from collections import OrderedDict
+from time import monotonic
 lock = asyncio.Lock()
 import pytz
 from datetime import datetime, timedelta, date, time
@@ -41,6 +42,7 @@ RESULT_SORTS = {}
 SEARCH_FILTERS = {}
 YEAR_FILTER_PREVIOUS = {}
 SEARCH_SUGGESTIONS = OrderedDict()
+SEARCH_SUGGESTION_TTL = 600
 
 
 def _get_search_filter_context(query):
@@ -57,6 +59,7 @@ def _search_suggestion_buttons(suggestions, user_id, chat_id):
             int(user_id),
             int(chat_id),
             suggestion["title"],
+            monotonic(),
         )
         SEARCH_SUGGESTIONS.move_to_end(token)
         while len(SEARCH_SUGGESTIONS) > 512:
@@ -1291,10 +1294,16 @@ async def search_suggestion_callback(bot, query):
                 "Aww jaan, ye suggestion expire ho gayi. Dobara search karo ❤️",
                 show_alert=True,
             )
-        _, chat_id, title = suggestion
+        _, chat_id, title, created_at = suggestion
         if query.message.chat.id != chat_id:
             return await query.answer(
                 get_search_button_popup_message(query.from_user.id),
+                show_alert=True,
+            )
+        if monotonic() - created_at > SEARCH_SUGGESTION_TTL:
+            SEARCH_SUGGESTIONS.pop(token, None)
+            return await query.answer(
+                "Aww jaan, ye suggestion expire ho gayi. Dobara search karo ❤️",
                 show_alert=True,
             )
         if not query.message.reply_to_message:
@@ -1302,6 +1311,7 @@ async def search_suggestion_callback(bot, query):
                 "Oops jaan, original search nahi mili. Dobara try karo ❤️",
                 show_alert=True,
             )
+        SEARCH_SUGGESTIONS.pop(token, None)
 
         files, offset, total_results = await get_search_results(
             chat_id,
@@ -2182,14 +2192,12 @@ async def auto_filter(
     client,
     msg,
     spoll=False,
-    suggestions=None,
     preserve_search_message=False,
 ):
     message = msg.message.reply_to_message if spoll else msg
     pending_message = None
     stage = "preparing search"
     search_query = None
-    fuzzy_suggestions = suggestions or []
     try:
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         if not spoll:
@@ -2244,7 +2252,6 @@ async def auto_filter(
                                         return await auto_filter(
                                             client,
                                             msg,
-                                            suggestions=fuzzy_suggestions,
                                             preserve_search_message=True,
                                         )
                                     finally:
@@ -2256,29 +2263,25 @@ async def auto_filter(
                                 message.chat.id,
                             )
                             await message.reply_text(
-                                "Oops baby! Spelling mein thodi gadbad ho gayi 😉 "
-                                "Neeche correct movie name choose karo ❤️",
+                                "Oops baby! Shayad tum ye movie dhoondh rahe ho 😉❤️",
                                 reply_markup=InlineKeyboardMarkup(suggestion_buttons),
                                 reply_to_message_id=message.id,
                             )
                             return
 
-                        ai_sts = await message.reply_sticker(sticker=f"CAACAgQAAxkBAAEq2R9mipkiW9ACyj7oQXznwKTPHqNCXQACkBUAA3mRUZGx4GwLX9XCHgQ")
-                        st=await message.reply('<b>Ai is Cheking For Your Spelling. Please Wait.</b>') 
-                        is_misspelled = await ai_spell_check(chat_id = message.chat.id,wrong_name=search)
-                        if is_misspelled:
-                            await st.edit(f'<b>Ai Suggested <code>{is_misspelled}</code> name\nSo Im Searching for <code>{is_misspelled}</code></b>')
-                            await asyncio.sleep(2)
-                            msg.text = is_misspelled
-                            await ai_sts.delete()
-                            await st.delete()
-                            return await auto_filter(client, msg)
-                        await ai_sts.delete()
-                        await st.delete()
-                        return await advantage_spell_chok(client, msg)
+                        await message.reply_text(
+                            get_flirty_interaction_message(
+                                message.from_user.id, "no_results"
+                            ),
+                            reply_to_message_id=message.id,
+                        )
+                        return
                     else:
                         await message.reply_text(
-                            get_flirty_interaction_message(message.from_user.id, "no_results")
+                            get_flirty_interaction_message(
+                                message.from_user.id, "no_results"
+                            ),
+                            reply_to_message_id=message.id,
                         )
                         return
             else:
@@ -2286,8 +2289,6 @@ async def auto_filter(
         else:
             message = msg.message.reply_to_message  # msg will be callback query
             search, files, offset, total_results = spoll[:4]
-            if len(spoll) > 4:
-                fuzzy_suggestions = spoll[4]
             search_query = search
             m=await message.reply_sticker(sticker="CAACAgIAAxkBAAEVugJljpdfkszexOUZu8hPjuPKty8ZmAACdxgAAqPjKEmMVSFmXGLogR4E",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🅿︎🅻︎🅴︎🅰︎🆂︎🅴︎  🆆︎🅰︎🅸︎🆃︎", url=CHNL_LNK)]]))
@@ -2358,14 +2359,6 @@ async def auto_filter(
         else:
             btn.append(
                 [InlineKeyboardButton(text="𝐍𝐎 𝐌𝐎𝐑𝐄 𝐏𝐀𝐆𝐄𝐒 𝐀𝐕𝐀𝐈𝐋𝐀𝐁𝐋𝐄",callback_data="pages")]
-            )
-        if fuzzy_suggestions:
-            btn.extend(
-                _search_suggestion_buttons(
-                    fuzzy_suggestions,
-                    message.from_user.id,
-                    message.chat.id,
-                )
             )
         imdb = None
         if settings.get("imdb", IMDB):
@@ -2515,13 +2508,10 @@ async def advantage_spell_chok(client, message):
             pass
         return
     if not movies:
-        google = search.replace(" ", "+")
-        button = [[
-            InlineKeyboardButton("🔍 ᴄʜᴇᴄᴋ sᴘᴇʟʟɪɴɢ ᴏɴ ɢᴏᴏɢʟᴇ 🔍", url=f"https://www.google.com/search?q={google}")
-        ]]
         k = await message.reply_text(
-            text=get_flirty_interaction_message(message.from_user.id, "no_results"),
-            reply_markup=InlineKeyboardMarkup(button),
+            text=get_flirty_interaction_message(
+                message.from_user.id, "no_results"
+            ),
         )
         await asyncio.sleep(120)
         await k.delete()
