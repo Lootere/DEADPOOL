@@ -63,6 +63,28 @@ class Database:
             {"$set": {"value": value}},
             upsert=True)
 
+    async def get_force_sub_channels(self):
+        channels = await self.get_setting("FORCE_SUB_CHANNELS", default=[])
+        if not isinstance(channels, list):
+            raise ValueError("FORCE_SUB_CHANNELS must be stored as a list")
+        return [int(channel) for channel in channels]
+
+    async def add_force_sub_channel(self, channel_id):
+        channel_id = int(channel_id)
+        await self.settings_col.update_one(
+            {"name": "FORCE_SUB_CHANNELS"},
+            {"$addToSet": {"value": channel_id}},
+            upsert=True,
+        )
+
+    async def remove_force_sub_channel(self, channel_id):
+        channel_id = int(channel_id)
+        result = await self.settings_col.update_one(
+            {"name": "FORCE_SUB_CHANNELS"},
+            {"$pull": {"value": channel_id}},
+        )
+        return result.modified_count > 0
+
     async def find_join_req(self, id):
         return bool(await self.req.find_one({'id': id}))
         

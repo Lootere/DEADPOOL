@@ -25,6 +25,7 @@ from database.connections_mdb import active_connection
 import re
 import json
 import base64
+from html import escape as html_escape
 logger = logging.getLogger(__name__)
 
 TIMEZONE = "Asia/KKolkata"
@@ -37,6 +38,113 @@ async def _send_all_vip_required(message):
             InlineKeyboardButton("✨ Bʏ VIP ✨", callback_data="premium_info")
         ]])
     )
+
+
+def _is_bot_admin(user_id):
+    return user_id is not None and str(user_id) in {
+        str(admin_id) for admin_id in ADMINS
+    }
+
+
+async def _get_force_sub_channel_id(client, message):
+    try:
+        channel_id = int(message.text.split(maxsplit=1)[1])
+    except (IndexError, ValueError):
+        await message.reply_text(
+            "<b>Jaan, channel ID ke saath command bhejo 😉\n"
+            "Example: <code>/add_fsub -1001234567890</code></b>"
+        )
+        return None
+
+    try:
+        channel = await client.get_chat(channel_id)
+        if channel.type != enums.ChatType.CHANNEL:
+            await message.reply_text(
+                "<b>Sirf channel ID chalega jaan, group ID nahi ❤️</b>"
+            )
+            return None
+        bot_member = await client.get_chat_member(channel_id, temp.ME)
+    except Exception:
+        logger.exception(
+            "Force-sub channel validation failed (channel_id=%s, actor_id=%s)",
+            channel_id,
+            message.from_user.id,
+        )
+        await message.reply_text(
+            "<b>Channel access nahi ho raha jaan. Bot ko channel mein admin banao, phir try karo ❤️</b>"
+        )
+        return None
+
+    if bot_member.status not in (
+        enums.ChatMemberStatus.ADMINISTRATOR,
+        enums.ChatMemberStatus.OWNER,
+    ):
+        await message.reply_text(
+            "<b>Jaan, pehle bot ko us channel ka admin banao 👑</b>"
+        )
+        return None
+    return channel_id, channel
+
+
+async def _send_dynamic_force_sub_prompt(
+    client, message, pre, grp_id, file_id, channels
+):
+    buttons = []
+    for channel_id in channels:
+        try:
+            invite_link = await client.create_chat_invite_link(
+                channel_id,
+                creates_join_request=(channel_id == AUTH_REQ_CHANNEL),
+            )
+        except Exception:
+            logger.exception(
+                "Could not create force-sub invite (channel_id=%s, user_id=%s)",
+                channel_id,
+                message.from_user.id,
+            )
+            await client.send_message(
+                chat_id=message.from_user.id,
+                text=(
+                    "<b>Jaan, abhi channel ka invite link nahi ban pa raha. "
+                    "Thodi der baad try karo ya bot admin se contact karo ❤️</b>"
+                ),
+            )
+            return
+
+        buttons.append([
+            InlineKeyboardButton("⛔️ ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ ⛔️", url=invite_link.invite_link)
+        ])
+
+    if pre.startswith("allfiles"):
+        retry_link = (
+            f"https://t.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}"
+        )
+    else:
+        retry_link = f"https://t.me/{temp.U_NAME}?start=files_{grp_id}_{file_id}"
+    buttons.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=retry_link)])
+    await client.send_message(
+        chat_id=message.from_user.id,
+        text=script.FSUB_TXT.format(message.from_user.mention),
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+async def _get_unsubscribed_dynamic_channels(client, message):
+    channels = await db.get_force_sub_channels()
+    missing_channels = []
+    for channel_id in channels:
+        if channel_id == AUTH_REQ_CHANNEL and AUTH_REQ_CHANNEL:
+            subscribed = await is_req_subscribed(client, message)
+        else:
+            subscribed = await is_subscribed(
+                client,
+                message.from_user.id,
+                channel_id,
+            )
+        if not subscribed:
+            missing_channels.append(channel_id)
+    return missing_channels
 
 
 async def _consume_daily_limit(message, settings, counter, setting_key, default_limit, text):
@@ -271,6 +379,21 @@ async def start(client, message):
         except:
             pre, grp_id, file_id = "", 0, data
         settings = await get_settings(int(data.split("_", 2)[1]))
+        missing_dynamic_channels = await _get_unsubscribed_dynamic_channels(
+            client,
+            message,
+        )
+        if missing_dynamic_channels:
+            await _send_dynamic_force_sub_prompt(
+                client,
+                message,
+                pre,
+                grp_id,
+                file_id,
+                missing_dynamic_channels,
+            )
+            return
+
         if settings.get('fsub_id', AUTH_CHANNEL) == AUTH_REQ_CHANNEL:
             if AUTH_REQ_CHANNEL and not await is_req_subscribed(client, message):
                 try:
@@ -1009,8 +1132,92 @@ async def set_fsub(client, message):
     await client.send_message(LOG_CHANNEL, f"#Fsub_Channel_set\n\nUser - {mention} set the force channel for {title}:\n\nFsub channel - {chat.title}\nId - `{channel_id}`")
     await message.reply_text(f"<b>ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ꜱᴇᴛ ꜰᴏʀᴄᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴄʜᴀɴɴᴇʟ ꜰᴏʀ {title}\n\nᴄʜᴀɴɴᴇʟ ɴᴀᴍᴇ - {chat.title}\nɪᴅ - <code>{channel_id}</code></b>")
 
+@Client.on_message(filters.command("add_fsub"))
+async def add_global_fsub(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text(
+            "<b>Jaan, ye command sirf bot admins ke liye hai 👑</b>"
+        )
+    channel_info = await _get_force_sub_channel_id(client, message)
+    if channel_info is None:
+        return
+    channel_id, channel = channel_info
+    channels = await db.get_force_sub_channels()
+    if channel_id in channels:
+        return await message.reply_text(
+            f"<b>{channel.title} pehle se force-sub list mein hai ❤️</b>"
+        )
+    await db.add_force_sub_channel(channel_id)
+    logger.info(
+        "Force-sub channel added (channel_id=%s, actor_id=%s)",
+        channel_id,
+        message.from_user.id,
+    )
+    await message.reply_text(
+        f"<b>✅ {html_escape(channel.title)} force-sub list mein add ho gaya jaan ❤️</b>"
+    )
+
+
+@Client.on_message(filters.command("list_fsub"))
+async def list_global_fsub(client, message):
+    if not _is_bot_admin(message.from_user.id if message.from_user else None):
+        return await message.reply_text(
+            "<b>Jaan, ye command sirf bot admins ke liye hai 👑</b>"
+        )
+    channels = await db.get_force_sub_channels()
+    if not channels:
+        return await message.reply_text(
+            "<b>Abhi dynamic force-sub list khaali hai jaan ❤️</b>"
+        )
+
+    channel_lines = []
+    for channel_id in channels:
+        try:
+            channel = await client.get_chat(channel_id)
+            channel_lines.append(
+                f"• {html_escape(channel.title)} — <code>{channel_id}</code>"
+            )
+        except Exception:
+            logger.exception(
+                "Could not read force-sub channel details (channel_id=%s)",
+                channel_id,
+            )
+            channel_lines.append(f"• <code>{channel_id}</code> — unavailable")
+    await message.reply_text(
+        "<b>Dynamic Force-Subscribe channels 👇\n\n"
+        + "\n".join(channel_lines)
+        + "</b>"
+    )
+
+
 @Client.on_message(filters.command('remove_fsub'))
 async def remove_fsub(client, message):
+    if message.chat.type == enums.ChatType.PRIVATE:
+        if not _is_bot_admin(message.from_user.id if message.from_user else None):
+            return await message.reply_text(
+                "<b>Jaan, ye command sirf bot admins ke liye hai 👑</b>"
+            )
+        try:
+            channel_id = int(message.text.split(maxsplit=1)[1])
+        except (IndexError, ValueError):
+            return await message.reply_text(
+                "<b>Jaan, channel ID ke saath command bhejo 😉\n"
+                "Example: <code>/remove_fsub -1001234567890</code></b>"
+            )
+        removed = await db.remove_force_sub_channel(channel_id)
+        if not removed:
+            return await message.reply_text(
+                "<b>Ye channel dynamic force-sub list mein nahi tha jaan ❤️</b>"
+            )
+        logger.info(
+            "Force-sub channel removed (channel_id=%s, actor_id=%s)",
+            channel_id,
+            message.from_user.id,
+        )
+        return await message.reply_text(
+            f"<b>✅ <code>{channel_id}</code> force-sub list se remove ho gaya jaan ❤️</b>"
+        )
+
     chat_type = message.chat.type
     if chat_type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         return await message.reply_text("<b>ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪɴ ɢʀᴏᴜᴘ...</b>")       

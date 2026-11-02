@@ -272,6 +272,8 @@ Money heist S0E01
 • /set_caption - ᴄʜᴀɴɢᴇ ғɪʟᴇ ᴄᴀᴘᴛɪᴏɴ
 • /set_fsub - sᴇᴛ ғsᴜʙ ᴄʜᴀɴɴᴇʟ ɪᴅ, ғᴏʀᴄᴇ sᴜʙsᴄʀɪʙᴇ
 • /remove_fsub - ʀᴇᴍᴏᴠᴇ ғᴏʀᴄᴇ sᴜʙsᴄʀɪʙᴇ ᴄʜᴀɴɴᴇʟ
+• /add_fsub - ᴀᴅᴅ ᴀ ɢʟᴏʙᴀʟ ғsᴜʙ ᴄʜᴀɴɴᴇʟ (ʙᴏᴛ ᴀᴅᴍɪɴ)
+• /list_fsub - ʟɪsᴛ ɢʟᴏʙᴀʟ ғsᴜʙ ᴄʜᴀɴɴᴇʟs (ʙᴏᴛ ᴀᴅᴍɪɴ)
 • /set_log - sᴇᴛ ʟᴏɢ_ᴄʜᴀɴɴᴇʟ
 • /set_file_limit - sᴇᴛ ᴅᴀɪʟʏ ғɪʟᴇ ʟɪᴍɪᴛ
 • /set_send_limit - sᴇᴛ sᴇᴅɴᴅ ᴀʟʟ ʙᴜᴛᴛᴏɴ ʟɪᴍɪᴛ ғᴏʀ 1ᴅᴀʏ
@@ -296,6 +298,9 @@ Money heist S0E01
 • /grp_delete - ᴅᴇʟᴇᴛᴇ ᴀʟʟ ɢʀᴏᴜᴘ ғᴏʀ ᴅᴀᴛᴀʙᴀsᴇ
 • /setlink - sᴇᴛ ғǫᴅɴ ᴜʀʟ
 • /set_value - set value True False in Direct Bot
+• /add_fsub <channel_id> - add a global force-sub channel
+• /remove_fsub <channel_id> - remove a global force-sub channel in PM
+• /list_fsub - list global force-sub channels
 """
     ADMIC_TEX2T = """
 👇 ᴄᴏᴍᴍᴀɴᴅꜱ ʟɪꜱᴛ ꜰᴏʀ ᴀᴅᴍɪɴꜱ 👇
