@@ -75,6 +75,19 @@ VIP_LOCK_POPUP_MESSAGES = [
     "VIP members are special ❤️",
 ]
 
+SEARCH_BUTTON_POPUP_MESSAGES = [
+    "Aww 😏 yeh search tumhari nahi hai, cutie.",
+    "Oops baby 😂 apne search ke buttons dabao.",
+    "Thoda sabr jaan 😜 yeh kisi aur ka result hai.",
+    "Movie chahiye? Apni search bhejo 😉",
+    "Yeh menu original requester ke liye hai 🔐",
+    "Arey cutie, apne results par try karo 😘",
+    "Request kisi aur ki hai, jaan 😅",
+    "Apni movie search karo, phir maze 😉",
+    "Wrong button, right cutie? 😏",
+    "Aww, apni search se shuru karo ❤️",
+]
+
 
 def get_vip_lock_message(user_id):
     previous_message = temp.VIP_LOCK_MESSAGES.get(user_id)
@@ -84,6 +97,17 @@ def get_vip_lock_message(user_id):
     ]
     message = random.choice(available_messages)
     temp.VIP_LOCK_MESSAGES[user_id] = message
+    return message
+
+
+def get_search_button_popup_message(user_id):
+    previous_message = temp.VIP_LOCK_MESSAGES.get(("search", user_id))
+    available_messages = [
+        message for message in SEARCH_BUTTON_POPUP_MESSAGES
+        if message != previous_message
+    ]
+    message = random.choice(available_messages)
+    temp.VIP_LOCK_MESSAGES[("search", user_id)] = message
     return message
 
 

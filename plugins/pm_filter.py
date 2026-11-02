@@ -19,7 +19,7 @@ from info import *
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
-from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message
+from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message, get_search_button_popup_message
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
@@ -383,7 +383,7 @@ async def language_check(bot, query):
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         _, userid, language = query.data.split("#")
         if int(userid) not in [query.from_user.id, 0]:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if language == "unknown":
             return await query.answer("Sᴇʟᴇᴄᴛ ᴀɴʏ ʟᴀɴɢᴜᴀɢᴇ ғʀᴏᴍ ᴛʜᴇ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴs !", show_alert=True)
         movie = temp.KEYWORD.get(query.from_user.id)
@@ -483,7 +483,7 @@ async def select_language(bot, query):
     _, userid = query.data.split("#")
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     if int(userid) not in [query.from_user.id, 0]:
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
     btn = [[
         InlineKeyboardButton("Sᴇʟᴇᴄᴛ Yᴏᴜʀ Dᴇꜱɪʀᴇᴅ Lᴀɴɢᴜᴀɢᴇ ↓", callback_data=f"lang#{userid}#unknown")
     ],[
@@ -622,7 +622,7 @@ async def quality_check(bot, query):
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         _, userid, quality = query.data.split("#")
         if int(userid) not in [query.from_user.id, 0]:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if quality == "unknown":
             return await query.answer("Sᴇʟᴇᴄᴛ ᴀɴʏ Qᴜᴀʟɪᴛʏꜱ ғʀᴏᴍ ᴛʜᴇ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴs !", show_alert=True)
         movie = temp.KEYWORD.get(query.from_user.id)
@@ -721,7 +721,7 @@ async def select_quality(bot, query):
     _, userid = query.data.split("#")
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     if int(userid) not in [query.from_user.id, 0]:
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
     btn = [[
         InlineKeyboardButton("Sᴇʟᴇᴄᴛ Yᴏᴜʀ Dᴇꜱɪʀᴇᴅ Qᴜᴀʟɪᴛʏꜱ ↓", callback_data=f"lusifilms#{userid}#unknown")
     ],[
@@ -885,7 +885,7 @@ async def episode_check(bot, query):
         curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
         _, userid, episode = query.data.split("#")
         if int(userid) not in [query.from_user.id, 0]:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
         if episode == "unknown":
             return await query.answer("Sᴇʟᴇᴄᴛ ᴀɴʏ ᴇᴘ ғʀᴏᴍ ᴛʜᴇ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴs !", show_alert=True)
         movie = temp.KEYWORD.get(query.from_user.id)
@@ -983,7 +983,7 @@ async def episode_check(bot, query):
 async def select_episode2(bot, query):
     _, userid = query.data.split("#")
     if int(userid) not in [query.from_user.id, 0]:
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
     btn = [[
         InlineKeyboardButton("Sᴇʟᴇᴄᴛ Yᴏᴜʀ Dᴇꜱɪʀᴇᴅ Eᴘɪsᴏᴅᴇs ↓", callback_data=f"episode#{userid}#unknown")
     ],[
@@ -1020,7 +1020,7 @@ async def select_episode2(bot, query):
 async def select_episode(bot, query):
     _, userid = query.data.split("#")
     if int(userid) not in [query.from_user.id, 0]:
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(get_search_button_popup_message(query.from_user.id), show_alert=True)
     btn = [[
         InlineKeyboardButton("Sᴇʟᴇᴄᴛ Yᴏᴜʀ Dᴇꜱɪʀᴇᴅ Eᴘɪsᴏᴅᴇs ↓", callback_data=f"episode#{userid}#unknown")
     ],[
