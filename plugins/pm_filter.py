@@ -19,7 +19,7 @@ from info import *
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, InputMediaVideo
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
-from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb
+from utils import get_size, is_subscribed, get_poster, temp, get_settings, save_group_settings, get_shortlink, stream_site, get_text, imdb, get_vip_lock_message
 from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
@@ -1267,7 +1267,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             
     elif query.data.startswith("sendfiles"):
         if not await db.has_premium_access(query.from_user.id):
-            return await query.answer("Ye sirf VIP ke liye hai 😏", show_alert=True)
+            return await query.answer(get_vip_lock_message(query.from_user.id), show_alert=True)
         clicked = query.from_user.id
         ident, key = query.data.split("#") 
         settings = await get_settings(query.message.chat.id)

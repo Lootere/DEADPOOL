@@ -20,7 +20,7 @@ from database.users_chats_db import db
 from database.Lootere_reffer import sdb
 from info import *
 from .pm_filter import auto_filter
-from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds
+from utils import get_settings, get_size, is_subscribed, is_req_subscribed, save_group_settings, temp, get_shortlink, get_seconds, get_vip_lock_message
 from database.connections_mdb import active_connection
 import re
 import json
@@ -32,7 +32,7 @@ TIMEZONE = "Asia/KKolkata"
 
 async def _send_all_vip_required(message):
     await message.reply_text(
-        "Ye VIP hai cutie 😏 Send All sirf VIP ke liye.",
+        get_vip_lock_message(message.from_user.id),
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("✨ Bʏ VIP ✨", callback_data="premium_info")
         ]])

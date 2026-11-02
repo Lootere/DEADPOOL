@@ -54,6 +54,38 @@ class temp(object):
     SPELL_CHECK = {}
     IMDB_CAP = {}
     CHAT = {}
+    VIP_LOCK_MESSAGES = {}
+
+
+VIP_LOCK_POPUP_MESSAGES = [
+    "Ye sirf VIP ke liye hai 😉",
+    "VIP ban jao bhai 😂",
+    "Itni aasani se VIP access nahi milega 😎",
+    "VIP membership le lo mere bhai ❤️",
+    "Ye feature sirf khaas logon ke liye hai 🔥",
+    "VIP nahi ho? Toh VIP ban jao 😁",
+    "Free mein itna hi milega bhai 😂",
+    "VIP users ke liye special treatment hai 👑",
+    "Pehle VIP membership lo, phir maze karo 😜",
+    "VIP club mein welcome hone ka time aa gaya 😎",
+    "Ye button VIP members ke liye reserved hai 🔐",
+    "Bhai VIP banne ka plan kab hai? 😂",
+    "VIP access ke bina entry band hai 🚫",
+    "Thoda VIP bano, phir try karo 😉",
+    "VIP members are special ❤️",
+]
+
+
+def get_vip_lock_message(user_id):
+    previous_message = temp.VIP_LOCK_MESSAGES.get(user_id)
+    available_messages = [
+        message for message in VIP_LOCK_POPUP_MESSAGES
+        if message != previous_message
+    ]
+    message = random.choice(available_messages)
+    temp.VIP_LOCK_MESSAGES[user_id] = message
+    return message
+
 
 async def check_reset_time():
     tz = pytz.timezone('Asia/Kolkata')
