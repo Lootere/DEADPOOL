@@ -3,12 +3,13 @@
 import os
 from pyrogram import Client, filters, enums
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant, MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
-from info import IMDB_TEMPLATE
+from info import IMDB_TEMPLATE, TIMEZONE
 from utils import extract_user, get_file_id, get_poster
 import time
 from datetime import date, datetime
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import logging
+import pytz
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
@@ -19,13 +20,97 @@ def _release_countdown_text(release_date, today=None):
         release_day = date.fromisoformat(str(release_date))
     except (TypeError, ValueError):
         return None
-    today = today or date.today()
+    today = today or datetime.now(pytz.timezone(TIMEZONE)).date()
     days_remaining = (release_day - today).days
     if days_remaining < 0:
         return None
     if days_remaining == 0:
         return "⏳ <b>Releases today!</b>"
     return f"⏳ <b>Release countdown:</b> {days_remaining} days to go"
+
+
+def _release_response(metadata, today=None):
+    release_date = metadata.get("release_date")
+    countdown = _release_countdown_text(release_date, today=today)
+    if countdown:
+        status = "UPCOMING RELEASE"
+    else:
+        try:
+            release_day = date.fromisoformat(str(release_date))
+        except (TypeError, ValueError):
+            release_day = None
+        if release_day is None:
+            status = "DATE UNCONFIRMED"
+        elif release_day < (today or datetime.now(pytz.timezone(TIMEZONE)).date()):
+            status = "RELEASED"
+        else:
+            status = "DATE UNCONFIRMED"
+
+    safe_title = html_escape(str(metadata.get("title") or "Unknown title"))
+    year = metadata.get("year")
+    date_line = (
+        f"Release Date: <b>{html_escape(str(release_date))}</b>"
+        if status != "DATE UNCONFIRMED"
+        else "Release date not officially confirmed yet."
+    )
+    countdown_line = f"\n\n{countdown}" if countdown else ""
+    return (
+        f"🎬 <b>{safe_title}"
+        f"{f' ({html_escape(str(year))})' if year else ''}</b>\n\n"
+        f"Status: <b>{status}</b>\n{date_line}{countdown_line}\n\n"
+        "Source: IMDb. Release type/platform not listed."
+    )
+
+
+@Client.on_message(filters.command("release"))
+async def release_search(client, message):
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].strip():
+        return await message.reply_text(
+            "Usage: <code>/release Movie or Series Name</code>\n"
+            "Example: <code>/release Stranger Things</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    status = await message.reply_text("IMDb par release details dhoondh rahi hoon…")
+    try:
+        movies = await get_poster(parts[1].strip(), bulk=True)
+    except Exception:
+        logger.exception("IMDb release search failed")
+        return await status.edit("Release details abhi nahi mil pa rahi hain. Thodi der baad try karein.")
+    if not movies:
+        return await status.edit("Is title ke IMDb results nahi mile.")
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"{movie.get('title', 'Unknown')} - {movie.get('year', 'Year N/A')}",
+            callback_data=f"release#{movie.movieID}",
+        )]
+        for movie in movies[:10]
+    ]
+    await status.edit(
+        "Sahi movie ya series choose karein:",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+
+
+@Client.on_callback_query(filters.regex(r"^release#"))
+async def release_callback(client, query):
+    movie_id = query.data.split("#", 1)[1]
+    try:
+        metadata = await get_poster(query=movie_id, id=True)
+    except Exception:
+        logger.exception("IMDb release details fetch failed (id=%s)", movie_id)
+        return await query.message.edit_text(
+            "Release details abhi available nahi hain. Baad mein dobara try karein."
+        )
+    if not metadata:
+        return await query.message.edit_text("Is title ki release details nahi mili.")
+    response = _release_response(metadata)
+    await query.message.edit_text(
+        response,
+        parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+    await query.answer()
 
 
 @Client.on_message(filters.command('id'))
