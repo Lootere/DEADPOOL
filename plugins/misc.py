@@ -10,6 +10,7 @@ from datetime import date, datetime
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import logging
 import pytz
+from .custom_poster import fetch_custom_poster
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
@@ -302,9 +303,16 @@ async def imdb_callback(bot: Client, quer_y: CallbackQuery):
     else:
         caption = "No Results"
     if imdb.get('poster'):
+        custom_poster = await fetch_custom_poster(imdb)
         try:
-            await quer_y.message.reply_photo(photo=imdb['poster'], caption=caption, reply_markup=InlineKeyboardMarkup(btn))
+            await quer_y.message.reply_photo(
+                photo=custom_poster or imdb['poster'],
+                caption=caption,
+                reply_markup=InlineKeyboardMarkup(btn),
+            )
         except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
+            if custom_poster:
+                raise
             pic = imdb.get('poster')
             poster = pic.replace('.jpg', "._V1_UX360.jpg")
             await quer_y.message.reply_photo(photo=poster, caption=caption, reply_markup=InlineKeyboardMarkup(btn))

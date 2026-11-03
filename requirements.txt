@@ -29,4 +29,5 @@ pyshorteners
 colorama
 fuzzywuzzy
 python-Levenshtein
+Pillow
 googletrans==4.0.0-rc1
