@@ -6,11 +6,27 @@ from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant, Media
 from info import IMDB_TEMPLATE
 from utils import extract_user, get_file_id, get_poster
 import time
-from datetime import datetime
+from datetime import date, datetime
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
+
+
+def _release_countdown_text(release_date, today=None):
+    """Return a countdown only for a reliable, exact ISO release date."""
+    try:
+        release_day = date.fromisoformat(str(release_date))
+    except (TypeError, ValueError):
+        return None
+    today = today or date.today()
+    days_remaining = (release_day - today).days
+    if days_remaining < 0:
+        return None
+    if days_remaining == 0:
+        return "⏳ <b>Releases today!</b>"
+    return f"⏳ <b>Release countdown:</b> {days_remaining} days to go"
+
 
 @Client.on_message(filters.command('id'))
 async def showid(client, message):
@@ -195,6 +211,9 @@ async def imdb_callback(bot: Client, quer_y: CallbackQuery):
             url = imdb['url'],
             **locals()
         )
+        countdown = _release_countdown_text(imdb.get("release_date"))
+        if countdown:
+            caption += f"\n\n{countdown}"
     else:
         caption = "No Results"
     if imdb.get('poster'):
