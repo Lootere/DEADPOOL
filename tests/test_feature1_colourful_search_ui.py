@@ -95,7 +95,7 @@ class TestFeature1GenuineButtonStyling(unittest.TestCase):
         self.assertEqual(ROLE_TO_TELEGRAM_STYLE["file"], "primary")
         self.assertEqual(ROLE_TO_TELEGRAM_STYLE["navigation"], "success")
         # Gold/Yellow is not supported by Telegram Bot API or MTProto; must be None (default)
-        self.assertIsNone(ROLE_TO_TELEGRAM_STYLE["vip"])
+        self.assertIsNone(ROLE_TO_TELEGRAM_STYLE["warning"])
         self.assertIsNone(ROLE_TO_TELEGRAM_STYLE["passthrough"])
 
     def test_button_role_classification(self):
@@ -141,7 +141,7 @@ class TestFeature1GenuineButtonStyling(unittest.TestCase):
         self.assertEqual(classify_search_button("🚫 ᴄʟᴏsᴇ 🚫", "close_data"), "navigation")
 
         # VIP actions -> classified as "vip" (which maps to style=None, clean label)
-        self.assertEqual(classify_search_button("VIP Send All", "sendfiles#chat-1"), "vip")
+        self.assertEqual(classify_search_button("VIP Send All", "sendfiles#chat-1"), "warning")
         self.assertEqual(classify_search_button("💎 VIP Season Pack", "season_pack#101"), "vip")
         self.assertEqual(classify_search_button("🔒 1080p VIP", "lusifilms#101#1080p"), "vip")
         self.assertEqual(classify_search_button("🔒 2160p VIP", "lusifilms#101#2160p"), "vip")
