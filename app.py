@@ -243,6 +243,26 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                     Unified Premium Hub menu, independent VIP destination subscriptions, single-member unique invite links & auto-kick expiry.
                 </p>
             </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Manual Payment Verification</span>
+                    <span class="card-tag">READY</span>
+                </div>
+                <p class="card-desc">
+                    Screenshot upload verification, atomic admin review (Approve / Reject / Custom Message), and strict product separation.
+                </p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Desi-Flirty Personality</span>
+                    <span class="card-tag">READY</span>
+                </div>
+                <p class="card-desc">
+                    Centralized Desi Hinglish + Cute Flirty template engine with anti-repetition, neutral fallback, and strict payment/broadcast accuracy.
+                </p>
+            </div>
         </div>
 
         <div class="commands-section">
@@ -252,13 +272,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <div class="command-item">/switch_db &lt;id&gt; - Target DB</div>
                 <div class="command-item">/dest_list - VIP destinations</div>
                 <div class="command-item">/vip_add - Activate subscriber</div>
-                <div class="command-item">/vip_renew - Extend expiry</div>
-                <div class="command-item">/myvip - User VIP status</div>
+                <div class="command-item">/pending_payments - Payment queue</div>
+                <div class="command-item">/set_pay_channel - Review channel</div>
             </div>
         </div>
 
         <footer>
-            RKMOVIESZIP Bot Service &bull; All 44 automated verification tests passing
+            RKMOVIESZIP Bot Service &bull; All 58 automated verification tests passing
         </footer>
     </div>
 </body>
@@ -292,6 +312,8 @@ class BotDashboardHandler(BaseHTTPRequestHandler):
                     "feature2_smart_search_engine": "active",
                     "feature3_multi_mongodb": "active",
                     "feature4_subscription_manager": "active",
+                    "feature5_payment_verification": "active",
+                    "feature6_desi_flirty_personality": "active",
                 }
             }
             self.wfile.write(json.dumps(resp).encode("utf-8"))

@@ -5,6 +5,17 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
+import importlib.util
+from pathlib import Path
+
+try:
+    from Lootere.utils.desi_personality import get_desi_text
+except Exception:
+    _dp_path = Path(__file__).resolve().parent / "desi_personality.py"
+    _dp_spec = importlib.util.spec_from_file_location("desi_personality", _dp_path)
+    _dp_mod = importlib.util.module_from_spec(_dp_spec)
+    _dp_spec.loader.exec_module(_dp_mod)
+    get_desi_text = _dp_mod.get_desi_text
 try:
     import pytz
     IST = pytz.timezone("Asia/Kolkata")
@@ -596,9 +607,7 @@ class SubscriptionManager:
                     try:
                         await client.send_message(
                             user_id,
-                            "<b>VIP Membership Reminder</b>\n\n"
-                            "Aapki Telegram VIP membership kal expire ho rahi hai.\n"
-                            "Renew karane ke liye please admin se contact karein.",
+                            get_desi_text("vip_reminder_day_before", user_id=user_id),
                         )
                     except Exception as e:
                         dm_failures += 1
@@ -621,9 +630,7 @@ class SubscriptionManager:
                     try:
                         await client.send_message(
                             user_id,
-                            "<b>VIP Membership Expiry Alert</b>\n\n"
-                            "Aapki VIP membership aaj expire ho rahi hai.\n"
-                            "Agar renew nahi karwaya toh access revoke ho jayega.",
+                            get_desi_text("vip_reminder_expiry_day", user_id=user_id),
                         )
                     except Exception as e:
                         dm_failures += 1
@@ -673,8 +680,7 @@ class SubscriptionManager:
                     try:
                         await client.send_message(
                             user_id,
-                            "<b>VIP Membership Expired</b>\n\n"
-                            "Aapki VIP access expire ho gayi hai. Phir se judne ke liye admin se renew karwayein.",
+                            get_desi_text("vip_expired_notice", user_id=user_id),
                         )
                     except Exception:
                         dm_failures += 1
@@ -750,8 +756,12 @@ def build_dest_plans_keyboard(owner_username: str = "Looteredev"):
     """Build destination plans keyboard with ZERO colour emojis."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("BUY VIP MEMBERSHIP", url=f"https://t.me/{owner_username}"),
+            InlineKeyboardButton("SELECT VIP PLAN", callback_data="pay_plan_choose#vip"),
+            InlineKeyboardButton("UPLOAD PROOF", callback_data="pay_upload_prompt"),
+        ],
+        [
             InlineKeyboardButton("MY INVITE LINKS", callback_data="dest_invites"),
+            InlineKeyboardButton("CONTACT ADMIN", url=f"https://t.me/{owner_username}"),
         ],
         [
             InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub"),

@@ -39,6 +39,8 @@ REFFER_POINT = int(environ.get('USER_POINT', "50")) # Set Referel point Count
 #premium Users Satuts
 premium = environ.get('PREMIUM_LOGS', '-1002244316214')
 PREMIUM_LOGS = int(premium) if premium and id_pattern.search(premium) else None
+pay_log = environ.get('PAYMENT_LOG_CHANNEL', environ.get('PAYMENT_LOGS', str(PREMIUM_LOGS or '')))
+PAYMENT_LOG_CHANNEL = int(pay_log) if pay_log and id_pattern.search(pay_log) else PREMIUM_LOGS
 # lock file, set file limit 
 FILE_LIMITE = int(environ.get('FILE_LIMITE', 15))
 SEND_ALL_LIMITE = int(environ.get('SEND_ALL_LIMITE', 3))

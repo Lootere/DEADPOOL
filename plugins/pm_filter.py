@@ -453,6 +453,37 @@ async def reply_stream(client, message):
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_text(bot, message):
+    try:
+        from Lootere.utils.payment_manager import payment_manager
+        admin_state = payment_manager.get_admin_state(message.from_user.id)
+        if admin_state:
+            req_id = admin_state.get("request_id")
+            action = admin_state.get("action")
+            if message.text == "/cancel":
+                payment_manager.clear_admin_state(message.from_user.id)
+                return await message.reply_text("Action cancelled.")
+            if action == "custom_msg":
+                ok, res_msg = await payment_manager.send_custom_message(bot, req_id, message.from_user.id, message.text)
+                payment_manager.clear_admin_state(message.from_user.id)
+                return await message.reply_text(res_msg)
+            elif action == "custom_reject":
+                from Lootere.utils.payment_manager import format_review_message_caption
+                ok, res_msg, req = await payment_manager.reject_payment_request(bot, req_id, message.from_user.id, reason=message.text)
+                payment_manager.clear_admin_state(message.from_user.id)
+                if req and req.get("review_message_id") and req.get("review_chat_id"):
+                    try:
+                        await bot.edit_message_caption(
+                            chat_id=req["review_chat_id"],
+                            message_id=req["review_message_id"],
+                            caption=format_review_message_caption(req),
+                            reply_markup=None,
+                        )
+                    except Exception:
+                        pass
+                return await message.reply_text(res_msg)
+    except Exception as e:
+        logger.error(f"Error handling admin payment prompt: {e}")
+
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
     await message.react(emoji=random.choice(REACTION), big=True)
@@ -2012,25 +2043,19 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     InlineKeyboardButton('★ ᴘʀᴇᴍɪᴜᴍ ʜᴜʙ ★', callback_data="premium_hub")
                  ]]
         reply_markup = InlineKeyboardMarkup(buttons)
+        from Lootere.utils.desi_personality import get_desi_text
         await _edit_help_page(
             client,
             query,
-            await get_start_message(query.from_user.mention, temp.U_NAME, temp.B_NAME),
+            await get_start_message(query.from_user.mention, temp.U_NAME, temp.B_NAME, user_id=query.from_user.id),
             reply_markup,
         )
-        await query.answer(MSG_ALRT)
+        await query.answer(get_desi_text("callback_greeting", user_id=query.from_user.id))
 
     elif query.data == "premium_hub":
         from Lootere.utils.subscription_manager import build_premium_hub_keyboard
-        hub_text = (
-            "<b>★ PREMIUM HUB ★</b>\n\n"
-            "<i>Explore our premium offerings:</i>\n\n"
-            "• <b>BOT PREMIUM:</b> Unlimited instant searches, lightning fast files, and priority streaming.\n"
-            "• <b>VIP DESTINATIONS:</b> Direct access to private Telegram VIP movie & series channels & groups.\n"
-            "• <b>FREE TRIAL & REFERRALS:</b> Invite friends to earn free bot access.\n"
-            "• <b>MY ACTIVE PLANS:</b> View your active subscriptions, expiry dates & private invite links.\n\n"
-            "<i>Select an option below to proceed:</i>"
-        )
+        from Lootere.utils.desi_personality import get_desi_text
+        hub_text = get_desi_text("premium_hub_intro", user_id=query.from_user.id)
         reply_markup = build_premium_hub_keyboard()
         await _edit_help_page(client, query, hub_text, reply_markup)
         await query.answer()
@@ -2205,12 +2230,20 @@ async def cb_handler(client: Client, query: CallbackQuery):
             return
         
     elif query.data == "premium_info":
-        buttons = [[
-            InlineKeyboardButton('🔲 Qʀ', callback_data='qr_info'),
-            InlineKeyboardButton('💳 Uᴘɪ', callback_data='upi_info')
-        ],[
-            InlineKeyboardButton('🚫 ᴄʟᴏꜱᴇ 🚫', callback_data='close_data')
-        ]]
+        buttons = [
+            [
+                InlineKeyboardButton('SELECT BOT PLAN', callback_data='pay_plan_choose#bot'),
+                InlineKeyboardButton('UPLOAD PROOF', callback_data='pay_upload_prompt'),
+            ],
+            [
+                InlineKeyboardButton('QR CODE', callback_data='qr_info'),
+                InlineKeyboardButton('UPI DETAILS', callback_data='upi_info'),
+            ],
+            [
+                InlineKeyboardButton('PREMIUM HUB', callback_data='premium_hub'),
+                InlineKeyboardButton('CLOSE', callback_data='close_data'),
+            ]
+        ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.reply_photo(
             photo=(PREMIUM_PIC),
@@ -2220,22 +2253,273 @@ async def cb_handler(client: Client, query: CallbackQuery):
         )
         
     elif query.data == "qr_info":
-        buttons = [[
-            InlineKeyboardButton('📸sᴇɴᴅ ᴘᴀʏᴍᴇɴᴛ sᴄʀᴇᴇɴsʜᴏᴛ📸', url=f'https://t.me/{OWNER_USER_NAME}')
-        ], [
-            InlineKeyboardButton('🚫 ᴄʟᴏꜱᴇ 🚫', callback_data='close_data')
-        ]]
+        buttons = [
+            [InlineKeyboardButton('UPLOAD PAYMENT PROOF', callback_data='pay_upload_prompt')],
+            [
+                InlineKeyboardButton('PREMIUM HUB', callback_data='premium_hub'),
+                InlineKeyboardButton('CLOSE', callback_data='close_data'),
+            ]
+        ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.reply_photo(QR_CODE, caption=script.QR_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
 
     elif query.data == "upi_info":
-        buttons = [[
-            InlineKeyboardButton('📸sᴇɴᴅ ᴘᴀʏᴍᴇɴᴛ sᴄʀᴇᴇɴsʜᴏᴛ📸', url=f'https://t.me/{OWNER_USER_NAME}')
-        ], [
-            InlineKeyboardButton('🚫 ᴄʟᴏꜱᴇ 🚫', callback_data='close_data')
-        ]]
+        buttons = [
+            [InlineKeyboardButton('UPLOAD PAYMENT PROOF', callback_data='pay_upload_prompt')],
+            [
+                InlineKeyboardButton('PREMIUM HUB', callback_data='premium_hub'),
+                InlineKeyboardButton('CLOSE', callback_data='close_data'),
+            ]
+        ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await query.message.reply_text(script.UPI_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+
+    elif query.data == "pay_upload_prompt":
+        from Lootere.utils.payment_manager import payment_manager, format_user_payment_instructions
+        user_id = query.from_user.id
+        selection = payment_manager.get_user_plan_selection(user_id)
+        if not selection:
+            buttons = [
+                [
+                    InlineKeyboardButton("SELECT BOT PLAN", callback_data="pay_plan_choose#bot"),
+                    InlineKeyboardButton("SELECT VIP PLAN", callback_data="pay_plan_choose#vip"),
+                ],
+                [InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub")],
+            ]
+            await _edit_help_page(
+                client,
+                query,
+                "<b>SELECT A PLAN FIRST</b>\n\nPlease select which plan you are paying for before uploading your payment screenshot:",
+                InlineKeyboardMarkup(buttons),
+            )
+            await query.answer()
+            return
+
+        instr = format_user_payment_instructions(
+            product_type=selection["product_type"],
+            plan_name=selection["plan_name"],
+            duration_days=selection["duration_days"],
+            amount=selection["amount"],
+        )
+        buttons = [
+            [
+                InlineKeyboardButton("QR CODE", callback_data="qr_info"),
+                InlineKeyboardButton("UPI DETAILS", callback_data="upi_info"),
+            ],
+            [InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub")],
+        ]
+        await _edit_help_page(client, query, instr, InlineKeyboardMarkup(buttons))
+        await query.answer("Send your payment screenshot in this chat!")
+
+    elif query.data.startswith("pay_plan_choose#"):
+        _, mode = query.data.split("#", 1)
+        buttons = []
+        if mode == "bot":
+            plans = await get_premium_plans()
+            for p in plans:
+                pid = p.get("id", "plan")
+                pname = p.get("name", pid)
+                price = p.get("price", "Contact Admin")
+                dur_str = str(p.get("duration", "30 days"))
+                days = 30
+                m = re.search(r"(\d+)", dur_str)
+                if m:
+                    val = int(m.group(1))
+                    if "month" in dur_str.lower():
+                        days = val * 30
+                    elif "year" in dur_str.lower():
+                        days = val * 365
+                    elif "week" in dur_str.lower():
+                        days = val * 7
+                    else:
+                        days = val
+                buttons.append([
+                    InlineKeyboardButton(
+                        f"{pname} - {price} ({days}d)",
+                        callback_data=f"pay_sel#bot_premium#{pid}#{days}#{price}",
+                    )
+                ])
+            title = "<b>SELECT BOT PREMIUM PLAN</b>\n\nChoose your Bot Premium plan below to proceed with payment:"
+        else:
+            from Lootere.utils.subscription_manager import subscription_manager
+            plans = subscription_manager.dest_mgr.list_plans()
+            for p in plans:
+                pid = p.get("id", "vip")
+                pname = p.get("name", pid)
+                price = p.get("price", "₹99")
+                days = p.get("duration_days", 30)
+                buttons.append([
+                    InlineKeyboardButton(
+                        f"{pname} - {price} ({days}d)",
+                        callback_data=f"pay_sel#group_premium#{pid}#{days}#{price}",
+                    )
+                ])
+            title = "<b>SELECT COMMUNITY VIP PLAN</b>\n\nChoose your Group/Channel VIP plan below to proceed with payment:"
+
+        buttons.append([InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub")])
+        await _edit_help_page(client, query, title, InlineKeyboardMarkup(buttons))
+        await query.answer()
+
+    elif query.data.startswith("pay_sel#"):
+        from Lootere.utils.payment_manager import payment_manager, format_user_payment_instructions
+        from Lootere.utils.subscription_manager import subscription_manager
+        parts = query.data.split("#")
+        product_type = parts[1]
+        plan_id = parts[2]
+        days = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 30
+        amount = parts[4] if len(parts) > 4 else "Standard"
+
+        plan_name = plan_id.title()
+        if product_type == "group_premium":
+            plan_obj = subscription_manager.dest_mgr.get_plan(plan_id)
+            if plan_obj:
+                plan_name = plan_obj.get("name", plan_name)
+        else:
+            bot_plans = await get_premium_plans()
+            for bp in bot_plans:
+                if bp.get("id") == plan_id:
+                    plan_name = bp.get("name", plan_name)
+                    break
+
+        payment_manager.set_user_plan_selection(
+            user_id=query.from_user.id,
+            product_type=product_type,
+            plan_id=plan_id,
+            plan_name=plan_name,
+            duration_days=days,
+            amount=amount,
+        )
+        instr = format_user_payment_instructions(product_type, plan_name, days, amount)
+        buttons = [
+            [
+                InlineKeyboardButton("QR CODE", callback_data="qr_info"),
+                InlineKeyboardButton("UPI DETAILS", callback_data="upi_info"),
+            ],
+            [InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub")],
+        ]
+        await _edit_help_page(client, query, instr, InlineKeyboardMarkup(buttons))
+        await query.answer("Plan selected! Please upload your payment screenshot.")
+
+    elif query.data.startswith("pay_app#"):
+        from Lootere.utils.payment_manager import payment_manager, format_review_message_caption
+        from Lootere.utils.subscription_manager import subscription_manager
+        admin_id = query.from_user.id
+        if admin_id not in ADMINS and not payment_manager.is_authorized_reviewer(admin_id):
+            return await query.answer("Unauthorized: Only configured payment reviewers can approve.", show_alert=True)
+
+        _, req_id = query.data.split("#", 1)
+        ok, msg, req = await payment_manager.approve_payment_request(
+            client=client,
+            request_id=req_id,
+            admin_id=admin_id,
+            user_db=db,
+            sub_mgr=subscription_manager,
+        )
+        if not ok:
+            return await query.answer(msg, show_alert=True)
+
+        try:
+            await query.message.edit_caption(
+                caption=format_review_message_caption(req),
+                reply_markup=None,
+            )
+        except Exception:
+            pass
+        await query.answer("Payment Approved!", show_alert=True)
+
+    elif query.data.startswith("pay_rej#"):
+        from Lootere.utils.payment_manager import payment_manager, build_rejection_reasons_keyboard
+        admin_id = query.from_user.id
+        if admin_id not in ADMINS and not payment_manager.is_authorized_reviewer(admin_id):
+            return await query.answer("Unauthorized: Only configured payment reviewers can reject.", show_alert=True)
+
+        _, req_id = query.data.split("#", 1)
+        req = await payment_manager.get_request(req_id)
+        if not req or req.get("status") != "pending":
+            return await query.answer("Request is no longer pending.", show_alert=True)
+
+        await query.message.edit_reply_markup(reply_markup=build_rejection_reasons_keyboard(req_id))
+        await query.answer("Select a rejection reason")
+
+    elif query.data.startswith("pay_rejr#"):
+        from Lootere.utils.payment_manager import (
+            payment_manager,
+            REJECTION_REASONS,
+            format_review_message_caption,
+        )
+        admin_id = query.from_user.id
+        if admin_id not in ADMINS and not payment_manager.is_authorized_reviewer(admin_id):
+            return await query.answer("Unauthorized.", show_alert=True)
+
+        parts = query.data.split("#")
+        req_id = parts[1]
+        idx = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+        reason = REJECTION_REASONS[idx] if 0 <= idx < len(REJECTION_REASONS) else "Verification failed."
+
+        ok, msg, req = await payment_manager.reject_payment_request(client, req_id, admin_id, reason)
+        if not ok:
+            return await query.answer(msg, show_alert=True)
+
+        try:
+            await query.message.edit_caption(
+                caption=format_review_message_caption(req),
+                reply_markup=None,
+            )
+        except Exception:
+            pass
+        await query.answer("Payment Rejected!", show_alert=True)
+
+    elif query.data.startswith("pay_rejcustom#"):
+        from Lootere.utils.payment_manager import payment_manager
+        admin_id = query.from_user.id
+        if admin_id not in ADMINS and not payment_manager.is_authorized_reviewer(admin_id):
+            return await query.answer("Unauthorized.", show_alert=True)
+
+        _, req_id = query.data.split("#", 1)
+        payment_manager.set_admin_state(admin_id, "custom_reject", req_id)
+        await query.answer("Send the custom rejection reason in your private chat with the bot.", show_alert=True)
+        try:
+            await client.send_message(
+                admin_id,
+                f"<b>Enter Rejection Reason for <code>{req_id}</code>:</b>\n\n"
+                f"Type your rejection reason below (or send /cancel to abort):"
+            )
+        except Exception:
+            pass
+
+    elif query.data.startswith("pay_msg#"):
+        from Lootere.utils.payment_manager import payment_manager
+        admin_id = query.from_user.id
+        if admin_id not in ADMINS and not payment_manager.is_authorized_reviewer(admin_id):
+            return await query.answer("Unauthorized.", show_alert=True)
+
+        _, req_id = query.data.split("#", 1)
+        req = await payment_manager.get_request(req_id)
+        if not req:
+            return await query.answer("Payment request not found.", show_alert=True)
+
+        payment_manager.set_admin_state(admin_id, "custom_msg", req_id)
+        await query.answer("Check Bot PM to type your custom message.", show_alert=True)
+        try:
+            await client.send_message(
+                admin_id,
+                f"<b>Send Custom Message to User (<code>{req['user_id']}</code>) for Request <code>{req_id}</code>:</b>\n\n"
+                f"Type your message below (or send /cancel to abort).\n"
+                f"<i>Note: Sending a custom message leaves the request PENDING for later approval/rejection.</i>"
+            )
+        except Exception:
+            pass
+
+    elif query.data.startswith("pay_cancel#"):
+        from Lootere.utils.payment_manager import payment_manager, build_admin_review_keyboard
+        admin_id = query.from_user.id
+        if admin_id not in ADMINS and not payment_manager.is_authorized_reviewer(admin_id):
+            return await query.answer("Unauthorized.", show_alert=True)
+
+        _, req_id = query.data.split("#", 1)
+        payment_manager.clear_admin_state(admin_id)
+        await query.message.edit_reply_markup(reply_markup=build_admin_review_keyboard(req_id))
+        await query.answer("Returned to main review actions.")
         
     elif query.data == "give_trial":
         user_id = query.from_user.id        

@@ -14,7 +14,7 @@ from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
 from database.ia_filterdb import Media
 from database.users_chats_db import db
-from info import SESSION, API_ID, API_HASH, BOT_TOKEN, LOG_STR, LOG_CHANNEL, PORT, BIN_CHANNEL, ON_HEROKU, VIP_GROUP_ID, VIP_CHANNEL1_ID, VIP_CHANNEL2_ID
+from info import SESSION, API_ID, API_HASH, BOT_TOKEN, LOG_STR, LOG_CHANNEL, PORT, BIN_CHANNEL, ON_HEROKU, VIP_GROUP_ID, VIP_CHANNEL1_ID, VIP_CHANNEL2_ID, ADMINS, PAYMENT_LOG_CHANNEL
 from typing import Union, Optional, AsyncGenerator
 from pyrogram import types
 from Script import script 
@@ -79,6 +79,14 @@ async def start():
         )
     except Exception as e:
         logging.error(f"Failed to initialize subscription_manager: {e}")
+    try:
+        from Lootere.utils.payment_manager import payment_manager
+        payment_manager.set_db(getattr(db, "db", None))
+        if PAYMENT_LOG_CHANNEL:
+            payment_manager.set_review_channel(PAYMENT_LOG_CHANNEL)
+        payment_manager.set_authorized_reviewers(ADMINS)
+    except Exception as e:
+        logging.error(f"Failed to initialize payment_manager: {e}")
     me = await LootereBot.get_me()
     temp.ME = me.id
     temp.U_NAME = me.username

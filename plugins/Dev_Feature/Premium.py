@@ -517,3 +517,189 @@ async def myvip_cmd(client, message):
     reply_markup = build_my_plans_keyboard(has_dest_sub=has_sub)
     await message.reply_text(text, reply_markup=reply_markup, parse_mode="html")
 
+
+# ======================================================================
+# Manual Payment Screenshot Approval System (User Upload & Admin Commands)
+# ======================================================================
+
+@Client.on_message(filters.private & (filters.photo | filters.document) & filters.incoming)
+async def handle_payment_screenshot_upload(client, message):
+    from Lootere.utils.payment_manager import (
+        payment_manager,
+        format_review_message_caption,
+        build_admin_review_keyboard,
+    )
+    user_id = message.from_user.id
+    selection = payment_manager.get_user_plan_selection(user_id)
+    if not selection:
+        return
+
+    file_id = None
+    if message.photo:
+        file_id = message.photo.file_id
+    elif message.document:
+        mime = getattr(message.document, "mime_type", "") or ""
+        if not (mime.startswith("image/") or mime == "application/pdf"):
+            return await message.reply_text(
+                "Please upload a valid payment screenshot image or PDF document."
+            )
+        file_id = message.document.file_id
+
+    if not file_id:
+        return
+
+    ok, msg, req = await payment_manager.create_payment_request(
+        user_id=user_id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        product_type=selection["product_type"],
+        plan_id=selection["plan_id"],
+        plan_name=selection["plan_name"],
+        duration_days=selection["duration_days"],
+        amount=selection["amount"],
+        screenshot_file_id=file_id,
+    )
+    if not ok:
+        return await message.reply_text(msg)
+
+    req_id = req["request_id"]
+    await message.reply_text(
+        f"<b>Payment Proof Received!</b>\n\n"
+        f"• <b>Request ID:</b> <code>{req_id}</code>\n"
+        f"• <b>Plan:</b> {req['plan_name']} ({req['duration_days']} Days)\n"
+        f"• <b>Status:</b> <code>PENDING ADMIN VERIFICATION</code>\n\n"
+        f"You will be notified automatically here as soon as an admin verifies and approves your payment."
+    )
+
+    review_chat_id = payment_manager.review_channel_id or PREMIUM_LOGS
+    if review_chat_id:
+        caption = format_review_message_caption(req)
+        keyboard = build_admin_review_keyboard(req_id)
+        try:
+            if message.photo:
+                sent = await client.send_photo(
+                    chat_id=review_chat_id,
+                    photo=file_id,
+                    caption=caption,
+                    reply_markup=keyboard,
+                )
+            else:
+                sent = await client.send_document(
+                    chat_id=review_chat_id,
+                    document=file_id,
+                    caption=caption,
+                    reply_markup=keyboard,
+                )
+            req["review_message_id"] = sent.id
+            req["review_chat_id"] = review_chat_id
+            if payment_manager.db is not None:
+                await payment_manager.db["payment_requests"].update_one(
+                    {"request_id": req_id},
+                    {"$set": {"review_message_id": sent.id, "review_chat_id": review_chat_id}},
+                )
+        except Exception as e:
+            logger.error(f"Failed to forward payment screenshot {req_id} to review channel {review_chat_id}: {e}")
+
+
+@Client.on_message(filters.private & filters.command("cancel"))
+async def cancel_payment_flow_cmd(client, message):
+    from Lootere.utils.payment_manager import payment_manager
+    uid = message.from_user.id
+    had_user = payment_manager.get_user_plan_selection(uid) is not None
+    had_admin = payment_manager.get_admin_state(uid) is not None
+    payment_manager.clear_user_plan_selection(uid)
+    payment_manager.clear_admin_state(uid)
+    if had_user or had_admin:
+        await message.reply_text("Active payment / review input flow has been cancelled.")
+    else:
+        await message.reply_text("No active payment flow to cancel.")
+
+
+@Client.on_message(filters.command("set_pay_channel") & filters.user(ADMINS))
+async def set_pay_channel_cmd(client, message):
+    from Lootere.utils.payment_manager import payment_manager
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> <code>/set_pay_channel &lt;channel_id&gt;</code>")
+    try:
+        ch_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("Invalid channel_id. Must be an integer (e.g. -100...).")
+
+    perm = await payment_manager.test_review_channel_permissions(client, ch_id)
+    if not perm.get("success"):
+        return await message.reply_text(
+            f"<b>Could not verify bot access to channel <code>{ch_id}</code>:</b>\n{perm.get('error')}\n\n"
+            f"Make sure the bot is an administrator in the review channel."
+        )
+
+    payment_manager.set_review_channel(ch_id)
+    await db.set_setting("PAYMENT_LOG_CHANNEL", ch_id)
+    await message.reply_text(
+        f"<b>Payment Review Channel Configured!</b>\n\n"
+        f"• <b>Channel:</b> {perm.get('title')}\n"
+        f"• <b>Chat ID:</b> <code>{ch_id}</code>\n"
+        f"• <b>Can Post Screenshots:</b> <code>{'YES' if perm.get('can_post_messages') else 'NO'}</code>"
+    )
+
+
+@Client.on_message(filters.command("test_pay_channel") & filters.user(ADMINS))
+async def test_pay_channel_cmd(client, message):
+    from Lootere.utils.payment_manager import payment_manager
+    ch_id = payment_manager.review_channel_id or PREMIUM_LOGS
+    if not ch_id:
+        return await message.reply_text("No payment review channel configured. Use /set_pay_channel.")
+    perm = await payment_manager.test_review_channel_permissions(client, ch_id)
+    if not perm.get("success"):
+        return await message.reply_text(f"<b>Review Channel Test Failed:</b> {perm.get('error')}")
+    await message.reply_text(
+        f"<b>PAYMENT REVIEW CHANNEL STATUS</b>\n\n"
+        f"• <b>Title:</b> {perm.get('title')}\n"
+        f"• <b>Chat ID:</b> <code>{ch_id}</code>\n"
+        f"• <b>Bot Status:</b> <code>{perm.get('status')}</code>\n"
+        f"• <b>Can Post Messages:</b> <code>{'YES' if perm.get('can_post_messages') else 'NO'}</code>"
+    )
+
+
+@Client.on_message(filters.command("add_reviewer") & filters.user(ADMINS))
+async def add_reviewer_cmd(client, message):
+    from Lootere.utils.payment_manager import payment_manager
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> <code>/add_reviewer &lt;user_id&gt;</code>")
+    try:
+        rev_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("Invalid user_id.")
+    if rev_id not in payment_manager.authorized_reviewers:
+        payment_manager.authorized_reviewers.append(rev_id)
+    await message.reply_text(f"User <code>{rev_id}</code> added to authorized payment reviewers.")
+
+
+@Client.on_message(filters.command("remove_reviewer") & filters.user(ADMINS))
+async def remove_reviewer_cmd(client, message):
+    from Lootere.utils.payment_manager import payment_manager
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> <code>/remove_reviewer &lt;user_id&gt;</code>")
+    try:
+        rev_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("Invalid user_id.")
+    if rev_id in payment_manager.authorized_reviewers:
+        payment_manager.authorized_reviewers.remove(rev_id)
+    await message.reply_text(f"User <code>{rev_id}</code> removed from authorized payment reviewers.")
+
+
+@Client.on_message(filters.command("pending_payments") & filters.user(ADMINS))
+async def pending_payments_cmd(client, message):
+    from Lootere.utils.payment_manager import payment_manager
+    pending = await payment_manager.list_pending_requests()
+    if not pending:
+        return await message.reply_text("No pending payment requests.")
+    lines = ["<b>PENDING PAYMENT REQUESTS</b>\n"]
+    for i, r in enumerate(pending, 1):
+        lines.append(
+            f"{i}. <code>{r['request_id']}</code> | User: <code>{r['user_id']}</code> | "
+            f"{r['product_type']} ({r['plan_name']}) | {r['amount']}"
+        )
+    await message.reply_text("\n".join(lines))
+
+

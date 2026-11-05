@@ -60,7 +60,17 @@ def is_valid_welcome_message(message):
 async def get_start_message(user_mention, bot_username, bot_name):
     template = await db.get_setting("WELCOME_MESSAGE", default=None)
     if template is None:
-        return script.START_TXT.format(user_mention, bot_username, bot_name)
+        try:
+            from Lootere.utils.desi_personality import get_desi_text
+            return get_desi_text(
+                "start_welcome",
+                user_id=str(user_mention),
+                user=user_mention,
+                bot_username=bot_username,
+                bot_name=bot_name,
+            )
+        except Exception:
+            return script.START_TXT.format(user_mention, bot_username, bot_name)
     if not is_valid_welcome_message(template):
         logger.warning("Ignoring invalid stored welcome message configuration")
         return script.START_TXT.format(user_mention, bot_username, bot_name)
