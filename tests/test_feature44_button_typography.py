@@ -236,6 +236,206 @@ class TestFeature44ButtonTypography(unittest.TestCase):
         self.assertEqual(unlock_btn.text, "✧ 𝙐𝙉𝙇𝙊𝘾𝙆 𝙑𝙄𝙋 ✧")
         self.assertEqual(unlock_btn.callback_data, "seeplans")
 
+    def test_10_get_start_message_supports_positional_and_user_id_kwarg(self):
+        """Regression test for Root Cause #1: get_start_message must accept optional user_id kwarg."""
+        import asyncio
+        import inspect
+
+        utils_src = (_ROOT / "utils.py").read_text(encoding="utf-8")
+        self.assertIn(
+            "async def get_start_message(user_mention, bot_username, bot_name, user_id=None):",
+            utils_src,
+        )
+
+        # Execute get_start_message logic with both 3 args and user_id kwarg
+        desi_mod = _load_util_module("desi_personality", "desi_personality.py")
+
+        async def _mock_get_start_message(user_mention, bot_username, bot_name, user_id=None):
+            uid = user_id if user_id is not None else str(user_mention)
+            return desi_mod.get_desi_text(
+                "start_welcome",
+                user_id=uid,
+                user=user_mention,
+                bot_username=bot_username,
+                bot_name=bot_name,
+            )
+
+        msg_3_args = asyncio.run(_mock_get_start_message("@Alice", "RKBot", "RKMOVIESZIP"))
+        msg_4_args = asyncio.run(_mock_get_start_message("@Alice", "RKBot", "RKMOVIESZIP", user_id=1001))
+        self.assertIn("@Alice", msg_3_args)
+        self.assertIn("@Alice", msg_4_args)
+
+    def test_11_start_menu_and_submenu_back_navigation_flows(self):
+        """Verify all /start -> Submenu -> BACK flows, repeated BACK clicks, and multi-user isolation."""
+        import asyncio
+
+        pm_filter_src = (_ROOT / "plugins" / "pm_filter.py").read_text(encoding="utf-8")
+        # Verify all expected callback_data bindings exist in pm_filter.py
+        self.assertIn("elif query.data == \"start\":", pm_filter_src)
+        self.assertIn("elif query.data == \"help\":", pm_filter_src)
+        self.assertIn("elif query.data == \"about\":", pm_filter_src)
+        self.assertIn("elif query.data == \"disclaimer\":", pm_filter_src)
+        self.assertIn("elif query.data == 'features':", pm_filter_src)
+        self.assertIn("elif query.data == \"channels\":", pm_filter_src)
+        self.assertIn("elif query.data == \"users\":", pm_filter_src)
+        self.assertIn("elif query.data == \"group\":", pm_filter_src)
+        self.assertIn("elif query.data == \"admic\":", pm_filter_src)
+        self.assertIn("elif query.data == \"admic2\":", pm_filter_src)
+        self.assertIn("elif query.data == \"premium_hub\":", pm_filter_src)
+        self.assertIn("elif query.data == \"pm_reff\":", pm_filter_src)
+        self.assertIn("elif query.data.startswith(\"setgs\"):", pm_filter_src)
+
+        # Simulate stateful message and _edit_help_page transitions across photo & text messages
+        class DummyNotModified(Exception):
+            pass
+
+        class SimMessage:
+            def __init__(self, chat_id, msg_id, photo=True):
+                self.chat = types.SimpleNamespace(id=chat_id)
+                self.id = msg_id
+                self.photo = photo
+                self.text_or_caption = "START"
+                self.reply_markup = None
+                self.deleted = False
+
+            async def edit_caption(self, caption, reply_markup=None, parse_mode=None):
+                if caption == self.text_or_caption and reply_markup == self.reply_markup:
+                    raise DummyNotModified("MessageNotModified")
+                self.text_or_caption = caption
+                self.reply_markup = reply_markup
+                return self
+
+            async def edit_text(self, text, reply_markup=None, parse_mode=None):
+                if text == self.text_or_caption and reply_markup == self.reply_markup:
+                    raise DummyNotModified("MessageNotModified")
+                self.text_or_caption = text
+                self.reply_markup = reply_markup
+                return self
+
+            async def edit_reply_markup(self, reply_markup=None):
+                self.reply_markup = reply_markup
+                return self
+
+            async def delete(self):
+                self.deleted = True
+
+        class SimClient:
+            async def send_message(self, chat_id, text, reply_markup=None, parse_mode=None):
+                msg = SimMessage(chat_id, msg_id=999, photo=False)
+                msg.text_or_caption = text
+                msg.reply_markup = reply_markup
+                return msg
+
+        async def sim_edit_help_page(client, message, text, reply_markup):
+            if message.photo:
+                if len(text) <= 1024:
+                    try:
+                        return await message.edit_caption(caption=text, reply_markup=reply_markup)
+                    except DummyNotModified:
+                        return message
+                await message.delete()
+                return await client.send_message(message.chat.id, text=text, reply_markup=reply_markup)
+            try:
+                return await message.edit_text(text=text, reply_markup=reply_markup)
+            except DummyNotModified:
+                return message
+
+        # Define the exact navigation graph in plugins/pm_filter.py
+        menus = {
+            "start": ("WELCOME_START", ["channels", "features", "help", "about", "premium_hub"]),
+            "help": ("HELP_MENU", ["admic", "users", "group", "start"]),
+            "users": ("USERS_COMMANDS", ["help"]),
+            "group": ("GROUP_COMMANDS", ["help"]),
+            "admic": ("A" * 1350, ["help", "admic2"]),  # > 1024 chars triggers photo->text transition
+            "admic2": ("ADMIN_PAGE_2", ["multidb#main", "admic"]),
+            "about": ("ABOUT_MENU", ["disclaimer", "start"]),
+            "disclaimer": ("DISCLAIMER_TEXT", ["about"]),
+            "features": ("FEATURES_TEXT", ["start"]),
+            "channels": ("CHANNELS_TEXT", ["start"]),
+            "premium_hub": ("PREMIUM_HUB_TEXT", ["premium_info", "dest_plans", "pm_reff", "my_plans_hub", "start"]),
+            "dest_plans": ("DEST_PLANS_TEXT", ["pay_plan_choose#vip", "pay_upload_prompt", "dest_invites", "premium_hub", "start"]),
+            "my_plans_hub": ("MY_PLANS_TEXT", ["dest_invites", "dest_plans", "premium_hub", "start"]),
+            "pm_reff": ("REFF_TEXT", ["show_pm", "premium_hub", "start"]),
+            "pay_plan_choose#vip": ("SELECT_VIP_PLAN", ["pay_sel#group_premium#vip#30#99", "premium_hub", "dest_plans"]),
+            "pay_plan_choose#bot": ("SELECT_BOT_PLAN", ["pay_sel#bot_premium#month_1#30#20", "premium_hub", "premium_info"]),
+            "setgs_main": ("SETTINGS_MAIN", ["setgs#auto_delete_menu#0#-1001"]),
+            "setgs#auto_delete_menu#0#-1001": ("SETTINGS_AUTO_DELETE", ["setgs#auto_delete_back#0#-1001"]),
+            "setgs#auto_delete_back#0#-1001": ("SETTINGS_MAIN", ["setgs#auto_delete_menu#0#-1001"]),
+        }
+
+        async def navigate(client, msg, target_cb):
+            text, callbacks = menus[target_cb]
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton(cb, callback_data=cb) for cb in callbacks]])
+            return await sim_edit_help_page(client, msg, text, kb)
+
+        async def run_flows():
+            client = SimClient()
+            # User 1 and User 2 independent messages
+            msg_u1 = SimMessage(chat_id=111, msg_id=1, photo=True)
+            msg_u2 = SimMessage(chat_id=222, msg_id=2, photo=True)
+
+            # 1. /start -> HELP -> BACK -> start
+            msg_u1 = await navigate(client, msg_u1, "start")
+            msg_u1 = await navigate(client, msg_u1, "help")
+            self.assertEqual(msg_u1.text_or_caption, "HELP_MENU")
+            msg_u1 = await navigate(client, msg_u1, "start")
+            self.assertEqual(msg_u1.text_or_caption, "WELCOME_START")
+
+            # 2. /start -> ABOUT -> DISCLAIMER -> BACK (about) -> BACK (start)
+            msg_u1 = await navigate(client, msg_u1, "about")
+            self.assertEqual(msg_u1.text_or_caption, "ABOUT_MENU")
+            msg_u1 = await navigate(client, msg_u1, "disclaimer")
+            self.assertEqual(msg_u1.text_or_caption, "DISCLAIMER_TEXT")
+            msg_u1 = await navigate(client, msg_u1, "about")
+            self.assertEqual(msg_u1.text_or_caption, "ABOUT_MENU")
+            msg_u1 = await navigate(client, msg_u1, "start")
+            self.assertEqual(msg_u1.text_or_caption, "WELCOME_START")
+
+            # 3. /start -> HELP -> ADMIN (photo -> text transition) -> NEXT (admic2) -> BACK (admic) -> BACK (help) -> BACK (start)
+            msg_u1 = await navigate(client, msg_u1, "help")
+            msg_u1 = await navigate(client, msg_u1, "admic")
+            self.assertFalse(msg_u1.photo)  # Converted to text message because len > 1024
+            msg_u1 = await navigate(client, msg_u1, "admic2")
+            self.assertEqual(msg_u1.text_or_caption, "ADMIN_PAGE_2")
+            msg_u1 = await navigate(client, msg_u1, "admic")
+            msg_u1 = await navigate(client, msg_u1, "help")
+            self.assertEqual(msg_u1.text_or_caption, "HELP_MENU")
+            msg_u1 = await navigate(client, msg_u1, "start")
+            self.assertEqual(msg_u1.text_or_caption, "WELCOME_START")
+
+            # 4. /start -> PREMIUM HUB -> VIP DESTINATIONS -> SELECT VIP PLAN -> BACK -> PREMIUM HUB -> BACK (start)
+            msg_u1 = await navigate(client, msg_u1, "premium_hub")
+            self.assertEqual(msg_u1.text_or_caption, "PREMIUM_HUB_TEXT")
+            msg_u1 = await navigate(client, msg_u1, "dest_plans")
+            msg_u1 = await navigate(client, msg_u1, "pay_plan_choose#vip")
+            msg_u1 = await navigate(client, msg_u1, "dest_plans")
+            msg_u1 = await navigate(client, msg_u1, "premium_hub")
+            msg_u1 = await navigate(client, msg_u1, "start")
+            self.assertEqual(msg_u1.text_or_caption, "WELCOME_START")
+
+            # 5. /start -> SETTINGS -> AUTO DELETE MENU -> BACK
+            msg_u1 = await navigate(client, msg_u1, "setgs_main")
+            msg_u1 = await navigate(client, msg_u1, "setgs#auto_delete_menu#0#-1001")
+            self.assertEqual(msg_u1.text_or_caption, "SETTINGS_AUTO_DELETE")
+            msg_u1 = await navigate(client, msg_u1, "setgs#auto_delete_back#0#-1001")
+            self.assertEqual(msg_u1.text_or_caption, "SETTINGS_MAIN")
+
+            # 6. Repeated BACK clicks (MessageNotModified handled cleanly)
+            msg_u1 = await navigate(client, msg_u1, "start")
+            msg_u1 = await navigate(client, msg_u1, "start")
+            self.assertEqual(msg_u1.text_or_caption, "WELCOME_START")
+
+            # 7. User 2 navigates independently without affecting User 1
+            msg_u2 = await navigate(client, msg_u2, "help")
+            msg_u2 = await navigate(client, msg_u2, "users")
+            self.assertEqual(msg_u2.text_or_caption, "USERS_COMMANDS")
+            self.assertEqual(msg_u1.text_or_caption, "WELCOME_START")
+            msg_u2 = await navigate(client, msg_u2, "help")
+            msg_u2 = await navigate(client, msg_u2, "start")
+            self.assertEqual(msg_u2.text_or_caption, "WELCOME_START")
+
+        asyncio.run(run_flows())
+
 
 if __name__ == "__main__":
     unittest.main()

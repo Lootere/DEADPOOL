@@ -57,14 +57,15 @@ def is_valid_welcome_message(message):
     return all(name in WELCOME_MESSAGE_PLACEHOLDERS for name in placeholders)
 
 
-async def get_start_message(user_mention, bot_username, bot_name):
+async def get_start_message(user_mention, bot_username, bot_name, user_id=None):
     template = await db.get_setting("WELCOME_MESSAGE", default=None)
     if template is None:
         try:
             from Lootere.utils.desi_personality import get_desi_text
+            uid = user_id if user_id is not None else str(user_mention)
             return get_desi_text(
                 "start_welcome",
-                user_id=str(user_mention),
+                user_id=uid,
                 user=user_mention,
                 bot_username=bot_username,
                 bot_name=bot_name,

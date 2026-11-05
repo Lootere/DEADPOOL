@@ -55,11 +55,14 @@ async def _edit_help_page(client, query, text, reply_markup):
     message = query.message
     if message.photo:
         if len(text) <= 1024:
-            return await message.edit_caption(
-                caption=text,
-                reply_markup=reply_markup,
-                parse_mode=enums.ParseMode.HTML,
-            )
+            try:
+                return await message.edit_caption(
+                    caption=text,
+                    reply_markup=reply_markup,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+            except MessageNotModified:
+                return message
         await message.delete()
         return await client.send_message(
             chat_id=message.chat.id,
@@ -67,11 +70,14 @@ async def _edit_help_page(client, query, text, reply_markup):
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
-    return await message.edit_text(
-        text=text,
-        reply_markup=reply_markup,
-        parse_mode=enums.ParseMode.HTML,
-    )
+    try:
+        return await message.edit_text(
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except MessageNotModified:
+        return message
 
 
 def _get_search_filter_context(query):
@@ -2042,6 +2048,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 ],[
                     InlineKeyboardButton('♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』', callback_data="premium_hub")
                  ]]
+        sponsor_button = await get_sponsor_button()
+        if sponsor_button:
+            buttons.append([sponsor_button])
         reply_markup = InlineKeyboardMarkup(buttons)
         from Lootere.utils.desi_personality import get_desi_text
         await _edit_help_page(
@@ -2135,6 +2144,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         ]] 
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(client, query, script.FEATURES, reply_markup)
+        await query.answer()
     elif query.data == "show_pm":
         user_id = query.from_user.id
         total_referrals = sdb.get_refer_points(user_id)
@@ -2144,22 +2154,29 @@ async def cb_handler(client: Client, query: CallbackQuery):
         try:
             user_id = query.from_user.id
             total_referrals = sdb.get_refer_points(user_id)
-            buttons = [[
-                InlineKeyboardButton('✦ 𝐈𝐍𝐕𝐈𝐓𝐄 ✦', url=f'https://t.me/share/url?url=%E0%A4%AF%E0%A5%87%20Bot%20%E0%A4%9F%E0%A5%87%E0%A4%B2%E0%A5%80%E0%A4%97%E0%A5%8D%E0%A4%B0%E0%A4%BE%E0%A4%AE%20%E0%A4%AA%E0%A4%B0%20%20%E0%A4%B8%E0%A4%AC%E0%A4%B8%E0%A5%87%20%E0%A4%AA%E0%A4%B9%E0%A4%B2%E0%A5%87%20%E0%A4%AE%E0%A5%82%E0%A4%B5%E0%A5%80%20%E0%A4%94%E0%A4%B0%20%E0%A4%B8%E0%A5%80%E0%A4%B0%E0%A5%80%E0%A4%9C%20%E0%A4%85%E0%A4%AA%E0%A4%B2%E0%A5%8B%E0%A4%A1%20%E0%A4%95%E0%A4%B0%20%E0%A4%A6%E0%A5%87%E0%A4%A4%E0%A4%BE%20%E0%A4%B9%E0%A5%88%20%0A%0A%E0%A4%85%E0%A4%97%E0%A4%B0%20%E0%A4%86%E0%A4%AA%20%E0%A4%AD%E0%A5%80%20%E0%A4%AE%E0%A5%82%E0%A4%B5%E0%A5%80%20%E0%A4%94%E0%A4%B0%20%E0%A4%B8%E0%A5%80%E0%A4%B0%E0%A5%80%E0%A4%9C%20%E0%A4%A6%E0%A5%87%E0%A4%96%E0%A4%A8%E0%A5%87%20%E0%A4%95%E0%A4%BE%20%E0%A4%B6%E0%A5%8C%E0%A4%95%20%E0%A4%B0%E0%A4%96%E0%A4%A4%E0%A5%87%20%E0%A4%B9%E0%A5%88%20%E0%A4%A4%E0%A5%8B%20%E0%A4%87%E0%A4%B8%20Bot%20%E0%A4%95%E0%A5%8B%20%E0%A4%B8%E0%A5%8D%E0%A4%9F%E0%A4%BE%E0%A4%B0%E0%A5%8D%E0%A4%9F%20%E0%A4%95%E0%A4%B0%E0%A5%87%E0%A4%82%0A%0ALink%3Dhttps://t.me/{temp.U_NAME}?start=reff_{user_id}'), 
-                InlineKeyboardButton(text=f'⏳{total_referrals}', callback_data=f"show_pm"), 
-                InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='start')
-            ]]
+            buttons = [
+                [
+                    InlineKeyboardButton('✦ 𝐈𝐍𝐕𝐈𝐓𝐄 ✦', url=f'https://t.me/share/url?url=%E0%A4%AF%E0%A5%87%20Bot%20%E0%A4%9F%E0%A5%87%E0%A4%B2%E0%A5%80%E0%A4%97%E0%A5%8D%E0%A4%B0%E0%A4%BE%E0%A4%AE%20%E0%A4%AA%E0%A4%B0%20%20%E0%A4%B8%E0%A4%AC%E0%A4%B8%E0%A5%87%20%E0%A4%AA%E0%A4%B9%E0%A4%B2%E0%A5%87%20%E0%A4%AE%E0%A5%82%E0%A4%B5%E0%A5%80%20%E0%A4%94%E0%A4%B0%20%E0%A4%B8%E0%A5%80%E0%A4%B0%E0%A5%80%E0%A4%9C%20%E0%A4%85%E0%A4%AA%E0%A4%B2%E0%A5%8B%E0%A4%A1%20%E0%A4%95%E0%A4%B0%20%E0%A4%A6%E0%A5%87%E0%A4%A4%E0%A4%BE%20%E0%A4%B9%E0%A5%88%20%0A%0A%E0%A4%85%E0%A4%97%E0%A4%B0%20%E0%A4%86%E0%A4%AA%20%E0%A4%AD%E0%A5%80%20%E0%A4%AE%E0%A5%82%E0%A4%B5%E0%A5%80%20%E0%A4%94%E0%A4%B0%20%E0%A4%B8%E0%A5%80%E0%A4%B0%E0%A5%80%E0%A4%9C%20%E0%A4%A6%E0%A5%87%E0%A4%96%E0%A4%A8%E0%A5%87%20%E0%A4%95%E0%A4%BE%20%E0%A4%B6%E0%A5%8C%E0%A4%95%20%E0%A4%B0%E0%A4%96%E0%A4%A4%E0%A5%87%20%E0%A4%B9%E0%A5%88%20%E0%A4%A4%E0%A5%8B%20%E0%A4%87%E0%A4%B8%20Bot%20%E0%A4%95%E0%A5%8B%20%E0%A4%B8%E0%A5%8D%E0%A4%9F%E0%A4%BE%E0%A4%B0%E0%A5%8D%E0%A4%9F%20%E0%A4%95%E0%A4%B0%E0%A5%87%E0%A4%82%0A%0ALink%3Dhttps://t.me/{temp.U_NAME}?start=reff_{user_id}'), 
+                    InlineKeyboardButton(text=f'⏳{total_referrals}', callback_data=f"show_pm"), 
+                ],
+                [
+                    InlineKeyboardButton('♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』', callback_data='premium_hub'),
+                    InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='start'),
+                ]
+            ]
             reply_markup = InlineKeyboardMarkup(buttons)
-            await client.edit_message_media(
-                query.message.chat.id, 
-                query.message.id, 
-                InputMediaPhoto(REFFER_PIC)
-            )
-            await query.message.edit_text(
-                text=script.REFFER_TXT.format(temp.U_NAME, user_id),
-                reply_markup=reply_markup,
-                parse_mode=enums.ParseMode.HTML
-            )
+            reff_text = script.REFFER_TXT.format(temp.U_NAME, user_id)
+            try:
+                if getattr(query.message, "photo", None):
+                    await client.edit_message_media(
+                        query.message.chat.id, 
+                        query.message.id, 
+                        InputMediaPhoto(REFFER_PIC)
+                    )
+            except Exception:
+                pass
+            await _edit_help_page(client, query, reff_text, reply_markup)
+            await query.answer()
         except Exception as e:
             await query.answer(f"{e}", show_alert=True)
                     
@@ -2241,38 +2258,60 @@ async def cb_handler(client: Client, query: CallbackQuery):
             ],
             [
                 InlineKeyboardButton('♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』', callback_data='premium_hub'),
+                InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='start'),
+            ],
+            [
                 InlineKeyboardButton('『 ✕ 𝐂𝐋𝐎𝐒𝐄 』', callback_data='close_data'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
-        await query.message.reply_photo(
-            photo=(PREMIUM_PIC),
-            caption=format_premium_plans(await get_premium_plans()),
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
+        plans_text = format_premium_plans(await get_premium_plans())
+        if hasattr(query.message, "reply_photo"):
+            await query.message.reply_photo(
+                photo=(PREMIUM_PIC),
+                caption=plans_text,
+                reply_markup=reply_markup,
+                parse_mode=enums.ParseMode.HTML
+            )
+        else:
+            await _edit_help_page(client, query, plans_text, reply_markup)
+        await query.answer()
         
     elif query.data == "qr_info":
         buttons = [
             [InlineKeyboardButton('⇩ 『 𝐔𝐏𝐋𝐎𝐀𝐃 𝐏𝐑𝐎𝐎𝐅 』', callback_data='pay_upload_prompt')],
             [
                 InlineKeyboardButton('♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』', callback_data='premium_hub'),
+                InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='premium_info'),
+            ],
+            [
                 InlineKeyboardButton('『 ✕ 𝐂𝐋𝐎𝐒𝐄 』', callback_data='close_data'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
-        await query.message.reply_photo(QR_CODE, caption=script.QR_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+        if hasattr(query.message, "reply_photo"):
+            await query.message.reply_photo(QR_CODE, caption=script.QR_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+        else:
+            await _edit_help_page(client, query, script.QR_TXT, reply_markup)
+        await query.answer()
 
     elif query.data == "upi_info":
         buttons = [
             [InlineKeyboardButton('⇩ 『 𝐔𝐏𝐋𝐎𝐀𝐃 𝐏𝐑𝐎𝐎𝐅 』', callback_data='pay_upload_prompt')],
             [
                 InlineKeyboardButton('♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』', callback_data='premium_hub'),
+                InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='premium_info'),
+            ],
+            [
                 InlineKeyboardButton('『 ✕ 𝐂𝐋𝐎𝐒𝐄 』', callback_data='close_data'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
-        await query.message.reply_text(script.UPI_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+        if hasattr(query.message, "reply_text"):
+            await query.message.reply_text(script.UPI_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+        else:
+            await _edit_help_page(client, query, script.UPI_TXT, reply_markup)
+        await query.answer()
 
     elif query.data == "pay_upload_prompt":
         from Lootere.utils.payment_manager import payment_manager, format_user_payment_instructions
@@ -2356,7 +2395,11 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 ])
             title = "<b>SELECT COMMUNITY VIP PLAN</b>\n\nChoose your Group/Channel VIP plan below to proceed with payment:"
 
-        buttons.append([InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub")])
+        back_cb = "premium_info" if mode == "bot" else "dest_plans"
+        buttons.append([
+            InlineKeyboardButton("♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』", callback_data="premium_hub"),
+            InlineKeyboardButton("◁ 𝐁𝐀𝐂𝐊", callback_data=back_cb),
+        ])
         await _edit_help_page(client, query, title, InlineKeyboardMarkup(buttons))
         await query.answer()
 
@@ -2390,12 +2433,16 @@ async def cb_handler(client: Client, query: CallbackQuery):
             amount=amount,
         )
         instr = format_user_payment_instructions(product_type, plan_name, days, amount)
+        back_mode = "vip" if product_type == "group_premium" else "bot"
         buttons = [
             [
-                InlineKeyboardButton("QR CODE", callback_data="qr_info"),
-                InlineKeyboardButton("UPI DETAILS", callback_data="upi_info"),
+                InlineKeyboardButton("『 𝐐𝐑 𝐂𝐎𝐃𝐄 』", callback_data="qr_info"),
+                InlineKeyboardButton("『 𝐔𝐏𝐈 𝐃𝐄𝐓𝐀𝐈𝐋𝐒 』", callback_data="upi_info"),
             ],
-            [InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub")],
+            [
+                InlineKeyboardButton("♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』", callback_data="premium_hub"),
+                InlineKeyboardButton("◁ 𝐁𝐀𝐂𝐊", callback_data=f"pay_plan_choose#{back_mode}"),
+            ],
         ]
         await _edit_help_page(client, query, instr, InlineKeyboardMarkup(buttons))
         await query.answer("Plan selected! Please upload your payment screenshot.")
@@ -2534,9 +2581,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
   
     elif query.data == "channels":
         buttons = [[
-            InlineKeyboardButton('Uᴘᴅᴀᴛᴇꜱ Cʜᴀɴɴᴇʟ', url=CHNL_LNK)
+            InlineKeyboardButton('『 📢 𝐔𝐏𝐃𝐀𝐓𝐄𝐒 𝐂𝐇𝐀𝐍𝐍𝐄𝐋 』', url=CHNL_LNK)
         ],[
-            InlineKeyboardButton('⇇ ʙᴀᴄᴋ', callback_data='start')
+            InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='start')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(
@@ -2545,47 +2592,52 @@ async def cb_handler(client: Client, query: CallbackQuery):
             script.CHANNELS.format(query.from_user.mention),
             reply_markup,
         )
+        await query.answer()
 
     elif query.data == "users":
         buttons = [[
-            InlineKeyboardButton('⇋ ʙᴀᴄᴋ ⇋', callback_data='help')
+            InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='help')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(client, query, script.USERS_TXT, reply_markup)
+        await query.answer()
 
     elif query.data == "group":
         buttons = [[
-            InlineKeyboardButton('⇋ ʙᴀᴄᴋ ⇋', callback_data='help')
+            InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='help')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(client, query, script.GROUP_TXT, reply_markup)
+        await query.answer()
 
     elif query.data == "admic":
         if query.from_user.id not in ADMINS:
             return await query.answer("⚠️ ʏᴏᴜ'ʀᴇ ɴᴏᴛ ᴀ ʙᴏᴛ ᴀᴅᴍɪɴ !", show_alert=True)        
         buttons = [[
-            InlineKeyboardButton('⬅︎ ʙᴀᴄᴋ', callback_data='help'), 
-            InlineKeyboardButton('ɴᴇxᴛ ➡︎', callback_data='admic2')
+            InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='help'), 
+            InlineKeyboardButton('𝐍𝐄𝐗𝐓 ➜', callback_data='admic2')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(client, query, script.ADMIC_TXT, reply_markup)
+        await query.answer()
         
     elif query.data == "admic2":
         buttons = [
             [InlineKeyboardButton('🗄️ Multi-DB Status', callback_data='multidb#main')],
-            [InlineKeyboardButton('⬅︎ ʙᴀᴄᴋ', callback_data='admic')]
+            [InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='admic')]
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(client, query, script.ADMIC_TEX2T, reply_markup)
+        await query.answer()
 
     elif query.data == "help":
         buttons = [[
-            InlineKeyboardButton('ᴀᴅᴍɪɴ - ᴄᴏᴍᴍᴀɴᴅꜱ', callback_data='admic')
+            InlineKeyboardButton('♛ 『 𝐀𝐃𝐌𝐈𝐍 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒 』', callback_data='admic')
         ], [
-            InlineKeyboardButton('ᴜꜱᴇʀ - ᴄᴏᴍᴍᴀɴᴅꜱ', callback_data='users'),
-            InlineKeyboardButton('ɢʀᴏᴜᴘ - ᴄᴏᴍᴍᴀɴᴅꜱ', callback_data='group')
+            InlineKeyboardButton('✦ 𝐔𝐒𝐄𝐑 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒 ✦', callback_data='users'),
+            InlineKeyboardButton('◈ 𝐆𝐑𝐎𝐔𝐏 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒 ◈', callback_data='group')
         ], [
-            InlineKeyboardButton('⇋ ʙᴀᴄᴋ ᴛᴏ ʜᴏᴍᴇ ⇋', callback_data='start')
+            InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊 𝐓𝐎 𝐇𝐎𝐌𝐄', callback_data='start')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(
@@ -2594,11 +2646,13 @@ async def cb_handler(client: Client, query: CallbackQuery):
             script.HELP_TXT.format(query.from_user.mention),
             reply_markup,
         )
+        await query.answer()
+
     elif query.data == "about":
         buttons = [[
-            InlineKeyboardButton('‼️ ᴅɪꜱᴄʟᴀɪᴍᴇʀ ‼️', callback_data='disclaimer'),
+            InlineKeyboardButton('『 𝐃𝐈𝐒𝐂𝐋𝐀𝐈𝐌𝐄𝐑 』', callback_data='disclaimer'),
         ], [
-            InlineKeyboardButton('⇋ ʙᴀᴄᴋ ᴛᴏ ʜᴏᴍᴇ ⇋', callback_data='start')
+            InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊 𝐓𝐎 𝐇𝐎𝐌𝐄', callback_data='start')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await _edit_help_page(
@@ -2607,25 +2661,28 @@ async def cb_handler(client: Client, query: CallbackQuery):
             script.ABOUT_TXT.format(temp.U_NAME, temp.B_NAME),
             reply_markup,
         )
+        await query.answer()
 
     
     elif query.data == "disclaimer":
-            btn = [[
-                    InlineKeyboardButton("⇋ ʙᴀᴄᴋ ⇋", callback_data="about")
-                  ]]
-            reply_markup = InlineKeyboardMarkup(btn)
-            await _edit_help_page(
-                client,
-                query,
-                script.DISCLAIMER_TXT,
-                reply_markup,
-            )
+        btn = [[
+            InlineKeyboardButton("◁ 𝐁𝐀𝐂𝐊", callback_data="about")
+        ]]
+        reply_markup = InlineKeyboardMarkup(btn)
+        await _edit_help_page(
+            client,
+            query,
+            script.DISCLAIMER_TXT,
+            reply_markup,
+        )
+        await query.answer()
+
     elif query.data == "stats":
         if query.from_user.id not in ADMINS:
             return await query.answer("⚠️ ʏᴏᴜ'ʀᴇ ɴᴏᴛ ᴀ ʙᴏᴛ ᴀᴅᴍɪɴ !", show_alert=True) 
         buttons = [[
-            InlineKeyboardButton('⟸ Bᴀᴄᴋ', callback_data='start'),
-            InlineKeyboardButton('⟲ Rᴇғʀᴇsʜ', callback_data='rfrsh')
+            InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='start'),
+            InlineKeyboardButton('↻ 𝐑𝐄𝐅𝐑𝐄𝐒𝐇', callback_data='rfrsh')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         total = await Media.count_documents()
@@ -2641,11 +2698,13 @@ async def cb_handler(client: Client, query: CallbackQuery):
             script.STATUS_TXT.format(total, users, chats, monsize, free),
             reply_markup,
         )
+        await query.answer()
+
     elif query.data == "rfrsh":
         await query.answer("Fetching MongoDb DataBase")
         buttons = [[
-            InlineKeyboardButton('⟸ Bᴀᴄᴋ', callback_data='help'),
-            InlineKeyboardButton('⟲ Rᴇғʀᴇsʜ', callback_data='rfrsh')
+            InlineKeyboardButton('◁ 𝐁𝐀𝐂𝐊', callback_data='start'),
+            InlineKeyboardButton('↻ 𝐑𝐄𝐅𝐑𝐄𝐒𝐇', callback_data='rfrsh')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         total = await Media.count_documents()
@@ -2671,6 +2730,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.message.edit("Yᴏᴜʀ Aᴄᴛɪᴠᴇ Cᴏɴɴᴇᴄᴛɪᴏɴ Hᴀs Bᴇᴇɴ Cʜᴀɴɢᴇᴅ. Gᴏ Tᴏ /connections ᴀɴᴅ ᴄʜᴀɴɢᴇ ʏᴏᴜʀ ᴀᴄᴛɪᴠᴇ ᴄᴏɴɴᴇᴄᴛɪᴏɴ.")
             return await query.answer(MSG_ALRT)
 
+        target_grp_id = grpid if grpid is not None else grp_id
+
         if set_type == "auto_delete_menu":
             rows = []
             option_buttons = []
@@ -2688,7 +2749,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 rows.append(option_buttons)
             rows.append([
                 InlineKeyboardButton(
-                    "⬅️ Back",
+                    "◁ 𝐁𝐀𝐂𝐊",
                     callback_data=f"setgs#auto_delete_back#0#{grp_id}",
                 )
             ])
@@ -2701,17 +2762,17 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 return await query.answer("Invalid auto-delete timer.", show_alert=True)
             if seconds not in dict(AUTO_DELETE_OPTIONS):
                 return await query.answer("Invalid auto-delete timer.", show_alert=True)
-            await save_group_settings(grpid, "auto_delete_time", seconds)
-            await save_group_settings(grpid, "auto_delete", bool(seconds))
+            await save_group_settings(target_grp_id, "auto_delete_time", seconds)
+            await save_group_settings(target_grp_id, "auto_delete", bool(seconds))
         elif set_type == "auto_delete":
             enabled = status == "False"
             seconds = 600 if enabled else 0
-            await save_group_settings(grpid, "auto_delete_time", seconds)
-            await save_group_settings(grpid, "auto_delete", enabled)
+            await save_group_settings(target_grp_id, "auto_delete_time", seconds)
+            await save_group_settings(target_grp_id, "auto_delete", enabled)
         elif set_type != "auto_delete_back":
-            await save_group_settings(grpid, set_type, status != "True")
+            await save_group_settings(target_grp_id, set_type, status != "True")
 
-        settings = await get_settings(grpid)
+        settings = await get_settings(target_grp_id)
 
         if settings is not None:
             buttons = [
