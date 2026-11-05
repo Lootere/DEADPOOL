@@ -273,6 +273,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                     19 approved Unicode typography styles &amp; 6 decorative symbol sets with plain fallback labels and zero callback modifications.
                 </p>
             </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Feature 45: Watch Ad to Unlock</span>
+                    <span class="card-tag">READY</span>
+                </div>
+                <p class="card-desc">
+                    1 verified ad = 1 single-file delivery when Free daily limit is exhausted, with Feature 43 lock precedence and safe retry on delivery errors.
+                </p>
+            </div>
         </div>
 
         <div class="commands-section">
@@ -283,12 +293,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <div class="command-item">/dest_list - VIP destinations</div>
                 <div class="command-item">/vip_add - Activate subscriber</div>
                 <div class="command-item">/pending_payments - Payment queue</div>
-                <div class="command-item">/set_pay_channel - Review channel</div>
+                <div class="command-item">/ad_unlock_stats - Ad Unlock stats</div>
+                <div class="command-item">/ad_unlock_toggle - Toggle Ad Unlock</div>
+                <div class="command-item">/lock_file &lt;id&gt; - Lock Premium file</div>
             </div>
         </div>
 
         <footer>
-            RKMOVIESZIP Bot Service &bull; All 71 automated verification tests passing
+            RKMOVIESZIP Bot Service &bull; All automated verification tests passing
         </footer>
     </div>
 </body>
@@ -325,6 +337,7 @@ class BotDashboardHandler(BaseHTTPRequestHandler):
                     "feature5_payment_verification": "active",
                     "feature6_desi_flirty_personality": "active",
                     "feature44_button_typography": "active",
+                    "feature45_watch_ad_unlock": "active",
                 }
             }
             self.wfile.write(json.dumps(resp).encode("utf-8"))

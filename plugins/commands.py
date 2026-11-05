@@ -45,6 +45,13 @@ from Lootere.utils.duplicate_cleaner import (
     scan_duplicates_preview,
     set_duplicate_mode,
 )
+from Lootere.utils.ad_unlock_manager import (
+    ad_unlock_manager,
+    build_ad_verified_delivery_keyboard,
+    build_ad_verified_ready_text,
+    build_daily_limit_exhausted_keyboard,
+    build_daily_limit_exhausted_text,
+)
 import re
 import json
 import base64
@@ -170,7 +177,17 @@ async def _get_unsubscribed_dynamic_channels(client, message):
     return missing_channels
 
 
-async def _consume_daily_limit(message, settings, counter, setting_key, default_limit, text):
+async def _consume_daily_limit(
+    message,
+    settings,
+    counter,
+    setting_key,
+    default_limit,
+    text,
+    file_id=None,
+    grp_id=0,
+    pre="files",
+):
     if await db.has_premium_access(message.from_user.id):
         return True, None
     if not settings.get("filelock", LIMIT_MODE):
@@ -183,15 +200,28 @@ async def _consume_daily_limit(message, settings, counter, setting_key, default_
         limit,
     )
     if not allowed:
-        await message.reply_text(
-            text,
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(
-                    "✨ Rᴇᴍᴏᴠᴇ Lɪᴍɪᴛᴇ ✨",
-                    callback_data="premium_info",
-                )
-            ]]),
-        )
+        if counter == "files_count" and file_id:
+            ad_enabled = await ad_unlock_manager.is_enabled(user_db=db)
+            await message.reply_text(
+                build_daily_limit_exhausted_text(),
+                reply_markup=build_daily_limit_exhausted_keyboard(
+                    grp_id=int(grp_id or 0),
+                    canonical_file_id=str(file_id),
+                    pre=str(pre or "files"),
+                    ad_unlock_enabled=ad_enabled,
+                ),
+                parse_mode=enums.ParseMode.HTML,
+            )
+        else:
+            await message.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "♛ 『 𝐁𝐔𝐘 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 』",
+                        callback_data="premium_info",
+                    )
+                ]]),
+            )
     return allowed, count
 
 
@@ -205,7 +235,14 @@ async def _deny_resolution_locked_file(message, file_id):
     if await db.has_premium_access(user_id):
         return False
     file_details = await get_file_details(file_id)
-    if not file_details or not await is_resolution_locked(file_details[0].file_name):
+    file_name = file_details[0].file_name if file_details else None
+    is_locked = await ad_unlock_manager.is_file_premium_locked(
+        file_id,
+        file_name=file_name,
+        user_db=db,
+        resolution_lock_checker=is_resolution_locked,
+    )
+    if not is_locked:
         return False
     await message.reply_text(
         get_vip_lock_message(user_id),
@@ -214,6 +251,82 @@ async def _deny_resolution_locked_file(message, file_id):
         ]])
     )
     return True
+
+
+async def execute_ad_unlocked_file_delivery(
+    client,
+    user_id: int,
+    unlock_request_id: str,
+    notify_callback,
+):
+    """Validate and deliver the exact single file unlocked via Feature 45 Watch Ad."""
+    req = await ad_unlock_manager.get_request(unlock_request_id, user_db=db)
+    if not req:
+        return await notify_callback("Unlock request not found or expired.")
+
+    file_id = req.get("canonical_file_id")
+    grp_id = int(req.get("grp_id") or 0)
+    pre = str(req.get("pre") or "files")
+
+    files_ = await get_file_details(file_id)
+    if not files_:
+        return await notify_callback("Aww, ye file ab database mein available nahi hai.")
+    file_obj = files_[0]
+
+    ok, msg, claimed_req = await ad_unlock_manager.begin_file_delivery(
+        unlock_request_id=unlock_request_id,
+        actor_user_id=user_id,
+        user_db=db,
+        file_name=file_obj.file_name,
+        resolution_lock_checker=is_resolution_locked,
+    )
+    if not ok:
+        return await notify_callback(msg)
+
+    try:
+        settings = await get_settings(grp_id)
+        caption_tpl = settings.get("caption", CUSTOM_FILE_CAPTION)
+        f_caption = caption_tpl.format(
+            file_name=file_obj.file_name,
+            file_size=get_size(file_obj.file_size),
+            file_caption=file_obj.caption,
+        )
+        f_caption += "\n\n<b>🔓 Uɴʟᴏᴄᴋᴇᴅ ᴠɪᴀ Wᴀᴛᴄʜ Aᴅ (1-Tɪᴍᴇ Fɪʟᴇ Aᴄᴄᴇss)</b>"
+
+        button = [[
+            InlineKeyboardButton(
+                "『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』",
+                callback_data=f"streaming#{file_id}#{grp_id}",
+            )
+        ]]
+        sent_msg = await client.send_cached_media(
+            chat_id=user_id,
+            file_id=file_id,
+            caption=f_caption,
+            protect_content=True if pre == "filep" else False,
+            reply_markup=InlineKeyboardMarkup(button),
+        )
+        await ad_unlock_manager.mark_delivery_consumed(
+            unlock_request_id=unlock_request_id,
+            delivery_reference=str(getattr(sent_msg, "id", "sent")),
+            user_db=db,
+        )
+        await db.record_weekly_activity(user_id)
+        return sent_msg
+    except Exception as exc:
+        logger.exception(
+            "Telegram delivery failed for ad_unlock_request=%s user_id=%s",
+            unlock_request_id,
+            user_id,
+        )
+        await ad_unlock_manager.abort_delivery_for_retry(
+            unlock_request_id=unlock_request_id,
+            error_reason=str(exc),
+            user_db=db,
+        )
+        return await notify_callback(
+            "File bhejne mein temporary issue aaya. Aapka unlock safe hai—dobara GET FILE dabayein!"
+        )
 
 
 @Client.on_message(filters.command("start") & filters.incoming)
@@ -430,6 +543,52 @@ async def start(client, message):
                 await asyncio.sleep(600)
                 await dlt.delete()
                 return
+
+            if Lootere.command[1].startswith("adverify_"):
+                parts = Lootere.command[1].split("_", 2)
+                if len(parts) != 3:
+                    return await message.reply_text("<b>Invalid ad-unlock verification link.</b>")
+                _, unlock_req_id, attempt_token = parts
+                req_info = await ad_unlock_manager.get_request(unlock_req_id, user_db=db)
+                file_name = None
+                if req_info:
+                    f_details = await get_file_details(req_info.get("canonical_file_id"))
+                    if f_details:
+                        file_name = f_details[0].file_name
+                ok, status_msg, verified_req = await ad_unlock_manager.verify_unlock_request(
+                    unlock_request_id=unlock_req_id,
+                    actor_user_id=user_id,
+                    verification_attempt_id=attempt_token,
+                    user_db=db,
+                    file_name=file_name,
+                    resolution_lock_checker=is_resolution_locked,
+                )
+                if not ok:
+                    return await message.reply_text(
+                        f"<b>⚠️ {html_escape(status_msg)}</b>",
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton("♛ 『 𝐁𝐔𝐘 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 』", callback_data="premium_info")
+                        ]]),
+                        parse_mode=enums.ParseMode.HTML,
+                    )
+                expiry_secs = await ad_unlock_manager.get_expiry_seconds(user_db=db)
+                display_name = verified_req.get("file_name") or verified_req.get("canonical_file_id")
+                await message.reply_text(
+                    build_ad_verified_ready_text(display_name, expiry_seconds=expiry_secs),
+                    reply_markup=build_ad_verified_delivery_keyboard(unlock_req_id),
+                    parse_mode=enums.ParseMode.HTML,
+                )
+                return
+
+            if Lootere.command[1].startswith("addeliver_"):
+                unlock_req_id = Lootere.command[1][len("addeliver_"):]
+                await execute_ad_unlocked_file_delivery(
+                    client=client,
+                    user_id=user_id,
+                    unlock_request_id=unlock_req_id,
+                    notify_callback=lambda txt: message.reply_text(f"<b>{html_escape(txt)}</b>", parse_mode=enums.ParseMode.HTML),
+                )
+                return
         
         data = message.command[1]
         if data.startswith("allfiles_") and not await db.has_premium_access(message.from_user.id):
@@ -617,6 +776,9 @@ async def start(client, message):
                     "file_limit",
                     FILE_LIMITE,
                     script.FILE_LIMIT,
+                    file_id=file_id,
+                    grp_id=grp_id,
+                    pre=pre,
                 )
                 if not allowed:
                     return
@@ -674,6 +836,9 @@ async def start(client, message):
             "file_limit",
             FILE_LIMITE,
             script.FILE_LIMIT,
+            file_id=file_id,
+            grp_id=grp_id,
+            pre=pre,
         )
         if not allowed:
             return
@@ -2750,3 +2915,108 @@ async def multidb_callback_handler(client: Client, query: CallbackQuery):
         keyboard = build_multidb_main_keyboard()
         await query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
         return
+
+
+# ===========================================================================
+# FEATURE 45 – WATCH AD TO UNLOCK FILE & FEATURE 43 PERSONAL FILE LOCK ADMIN
+# ===========================================================================
+
+@Client.on_message(filters.command(["ad_unlock_stats", "adunlockstats"]))
+async def ad_unlock_stats_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+    enabled = await ad_unlock_manager.is_enabled(user_db=db)
+    expiry = await ad_unlock_manager.get_expiry_seconds(user_db=db)
+    locked_files = await ad_unlock_manager.get_personal_locked_files(user_db=db)
+    metrics = ad_unlock_manager.get_metrics_summary()
+    text = (
+        "<b>📊 Feature 45 – Watch Ad to Unlock Status</b>\n\n"
+        f"• <b>Status:</b> <code>{'ENABLED' if enabled else 'DISABLED'}</code>\n"
+        f"• <b>Pending Expiry Window:</b> <code>{expiry}s</code>\n"
+        f"• <b>Feature 43 Locked Files:</b> <code>{len(locked_files)}</code>\n\n"
+        "<b>Operational Counters:</b>\n"
+        f"• Requests Created: <code>{metrics['requests_created']}</code>\n"
+        f"• Verifications Succeeded: <code>{metrics['verifications_succeeded']}</code>\n"
+        f"• Verifications Failed: <code>{metrics['verifications_failed']}</code>\n"
+        f"• Verifications Expired: <code>{metrics['verifications_expired']}</code>\n"
+        f"• Single-File Deliveries Succeeded: <code>{metrics['deliveries_succeeded']}</code>\n"
+        f"• Delivery Failures (Safe Retries): <code>{metrics['deliveries_failed']}</code>\n"
+        f"• Replay / Cross-User Blocks: <code>{metrics['replay_attempts_blocked']}</code>\n"
+        f"• Premium Lock Precedence Blocks: <code>{metrics['premium_lock_blocks']}</code>"
+    )
+    await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_message(filters.command(["ad_unlock_toggle", "adunlocktoggle"]))
+async def ad_unlock_toggle_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+    args = message.text.split()[1:]
+    current = await ad_unlock_manager.is_enabled(user_db=db)
+    if args:
+        new_state = args[0].strip().lower() in ("on", "true", "1", "enable", "enabled")
+    else:
+        new_state = not current
+    await ad_unlock_manager.set_enabled(new_state, user_db=db)
+    await message.reply_text(
+        f"<b>Watch Ad to Unlock is now <code>{'ENABLED' if new_state else 'DISABLED'}</code>.</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command(["ad_unlock_expiry", "adunlockexpiry"]))
+async def ad_unlock_expiry_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+    args = message.text.split()[1:]
+    if not args or not args[0].isdigit():
+        return await message.reply_text("<b>Usage:</b> <code>/ad_unlock_expiry &lt;seconds&gt;</code> (min 60)")
+    new_secs = await ad_unlock_manager.set_expiry_seconds(int(args[0]), user_db=db)
+    await message.reply_text(
+        f"<b>Watch Ad pending authorization expiry set to <code>{new_secs}s</code>.</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command(["lock_file", "lockfile"]))
+async def lock_personal_file_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+    args = message.text.split()[1:]
+    if not args:
+        return await message.reply_text("<b>Usage:</b> <code>/lock_file &lt;file_id&gt;</code>")
+    for fid in args:
+        await ad_unlock_manager.lock_personal_file(fid.strip(), user_db=db)
+    await message.reply_text(
+        f"<b>Locked {len(args)} file(s) as Premium-exclusive (Feature 43 precedence).</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command(["unlock_file", "unlockfile"]))
+async def unlock_personal_file_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+    args = message.text.split()[1:]
+    if not args:
+        return await message.reply_text("<b>Usage:</b> <code>/unlock_file &lt;file_id&gt;</code>")
+    for fid in args:
+        await ad_unlock_manager.unlock_personal_file(fid.strip(), user_db=db)
+    await message.reply_text(
+        f"<b>Unlocked {len(args)} file(s) from Personal Lock.</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command(["locked_files", "lockedfiles"]))
+async def list_locked_files_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+    locked = sorted(await ad_unlock_manager.get_personal_locked_files(user_db=db))
+    if not locked:
+        return await message.reply_text("<b>No individually locked files configured.</b>")
+    items = "\n".join(f"• <code>{html_escape(fid)}</code>" for fid in locked[:50])
+    await message.reply_text(
+        f"<b>🔒 Feature 43 Personal Locked Files ({len(locked)}):</b>\n\n{items}",
+        parse_mode=enums.ParseMode.HTML,
+    )

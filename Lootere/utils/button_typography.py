@@ -421,6 +421,38 @@ BUTTON_TYPOGRAPHY_CATALOG: Dict[str, Dict[str, str]] = {
         "style": "Stylish Next",
     },
 
+    # Feature 45 – Watch Ad to Unlock File
+    "ad_buy_premium": {
+        "styled": "♛ 『 𝐁𝐔𝐘 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 』",
+        "plain_fallback": "BUY PREMIUM",
+        "category": "premium_vip",
+        "style": "Royal Frame",
+    },
+    "ad_watch_unlock": {
+        "styled": "✦ 𝐖𝐀𝐓𝐂𝐇 𝐀𝐃 & 𝐔𝐍𝐋𝐎𝐂𝐊",
+        "plain_fallback": "WATCH AD & UNLOCK",
+        "category": "file_download",
+        "style": "Minimal Luxury",
+    },
+    "ad_watch_ad": {
+        "styled": "『 🎬 𝐖𝐀𝐓𝐂𝐇 𝐀𝐃 』",
+        "plain_fallback": "WATCH AD",
+        "category": "file_download",
+        "style": "Cinematic",
+    },
+    "ad_verify_ad": {
+        "styled": "◈ 𝐕𝐄𝐑𝐈𝐅𝐘 𝐀𝐃",
+        "plain_fallback": "VERIFY AD",
+        "category": "file_download",
+        "style": "Elegant Divider",
+    },
+    "ad_get_file": {
+        "styled": "⇩ 𝐆𝐄𝐓 𝐅𝐈𝐋𝐄",
+        "plain_fallback": "GET FILE",
+        "category": "file_download",
+        "style": "Double-Struck",
+    },
+
     # Navigation
     "nav_back": {
         "styled": "◁ 𝐁𝐀𝐂𝐊",

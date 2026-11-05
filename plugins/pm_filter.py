@@ -2567,7 +2567,88 @@ async def cb_handler(client: Client, query: CallbackQuery):
         payment_manager.clear_admin_state(admin_id)
         await query.message.edit_reply_markup(reply_markup=build_admin_review_keyboard(req_id))
         await query.answer("Returned to main review actions.")
-        
+
+    elif query.data.startswith("ad_unlock_start#"):
+        from Lootere.utils.ad_unlock_manager import (
+            ad_unlock_manager,
+            build_ad_verification_keyboard,
+            build_ad_verification_prompt_text,
+        )
+        parts = query.data.split("#", 3)
+        if len(parts) != 4:
+            return await query.answer("Invalid file unlock request.", show_alert=True)
+        _, grp_id_str, pre, file_id = parts
+        grp_id = int(grp_id_str) if grp_id_str.lstrip("-").isdigit() else 0
+        user_id = query.from_user.id
+
+        files_ = await get_file_details(file_id)
+        if not files_:
+            return await query.answer("Ye file ab database mein available nahi hai.", show_alert=True)
+        file_obj = files_[0]
+
+        ok, msg, req = await ad_unlock_manager.create_unlock_request(
+            telegram_user_id=user_id,
+            canonical_file_id=file_id,
+            grp_id=grp_id,
+            pre=pre,
+            file_name=file_obj.file_name,
+            user_db=db,
+            resolution_lock_checker=is_resolution_locked,
+        )
+        if not ok or not req:
+            return await query.answer(msg, show_alert=True)
+
+        settings = await get_settings(grp_id)
+        is_second_shortener = await db.use_second_shortener(user_id, settings.get("verify_time", TWO_VERIFY_GAP))
+        is_third_shortener = await db.use_third_shortener(user_id, settings.get("verify_time2", THIRD_VERIFY_GAP))
+        tutorial = (
+            settings.get("tutorial3", TUTORIAL3)
+            if is_third_shortener
+            else settings.get("tutorial2", TUTORIAL2)
+            if is_second_shortener
+            else settings.get("tutorial", TUTORIAL)
+        )
+        deep_link = (
+            f"https://telegram.me/{temp.U_NAME}"
+            f"?start=adverify_{req['unlock_request_id']}_{req['verification_attempt_id']}"
+        )
+        short_url = await get_shortlink(deep_link, grp_id, is_second_shortener, is_third_shortener)
+        expiry_secs = await ad_unlock_manager.get_expiry_seconds(user_db=db)
+        await query.message.edit_text(
+            build_ad_verification_prompt_text(file_obj.file_name, expiry_seconds=expiry_secs),
+            reply_markup=build_ad_verification_keyboard(verify_url=short_url, tutorial_url=tutorial),
+            parse_mode=enums.ParseMode.HTML,
+        )
+        await query.answer("Complete ad verification to unlock this file!")
+
+    elif query.data.startswith("ad_deliver#"):
+        from plugins.commands import execute_ad_unlocked_file_delivery
+        _, unlock_req_id = query.data.split("#", 1)
+        user_id = query.from_user.id
+
+        alert_holder = []
+
+        async def _notify(err_text: str):
+            alert_holder.append(err_text)
+            await query.answer(err_text, show_alert=True)
+
+        sent = await execute_ad_unlocked_file_delivery(
+            client=client,
+            user_id=user_id,
+            unlock_request_id=unlock_req_id,
+            notify_callback=_notify,
+        )
+        if sent is not None and not alert_holder:
+            try:
+                await query.message.edit_text(
+                    "<b>✅ 𝐅𝐈𝐋𝐄 𝐔𝐍𝐋𝐎𝐂𝐊𝐄𝐃 & 𝐃𝐄𝐋𝐈𝐕𝐄𝐑𝐄𝐃</b>\n\n"
+                    "Aapki selected file bhej di gayi hai! (1 Verified Ad = 1 File Consumed)",
+                    parse_mode=enums.ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            await query.answer("File sent!", show_alert=False)
+
     elif query.data == "give_trial":
         user_id = query.from_user.id        
         await db.give_free_trial(user_id)
