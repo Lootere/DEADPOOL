@@ -263,6 +263,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                     Centralized Desi Hinglish + Cute Flirty template engine with anti-repetition, neutral fallback, and strict payment/broadcast accuracy.
                 </p>
             </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Feature 44: Button Typography</span>
+                    <span class="card-tag">READY</span>
+                </div>
+                <p class="card-desc">
+                    19 approved Unicode typography styles &amp; 6 decorative symbol sets with plain fallback labels and zero callback modifications.
+                </p>
+            </div>
         </div>
 
         <div class="commands-section">
@@ -278,7 +288,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
 
         <footer>
-            RKMOVIESZIP Bot Service &bull; All 58 automated verification tests passing
+            RKMOVIESZIP Bot Service &bull; All 71 automated verification tests passing
         </footer>
     </div>
 </body>
@@ -314,6 +324,7 @@ class BotDashboardHandler(BaseHTTPRequestHandler):
                     "feature4_subscription_manager": "active",
                     "feature5_payment_verification": "active",
                     "feature6_desi_flirty_personality": "active",
+                    "feature44_button_typography": "active",
                 }
             }
             self.wfile.write(json.dumps(resp).encode("utf-8"))

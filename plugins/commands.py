@@ -58,7 +58,7 @@ async def _send_all_vip_required(message):
     await message.reply_text(
         get_vip_lock_message(message.from_user.id),
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✨ Bʏ VIP ✨", callback_data="premium_info")
+            InlineKeyboardButton("꧁ 👑 𝐁𝐔𝐘 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 ꧂", callback_data="premium_info")
         ]])
     )
 
@@ -210,7 +210,7 @@ async def _deny_resolution_locked_file(message, file_id):
     await message.reply_text(
         get_vip_lock_message(user_id),
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✨ Bʏ VIP ✨", callback_data="premium_info")
+            InlineKeyboardButton("꧁ 👑 𝐁𝐔𝐘 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 ꧂", callback_data="premium_info")
         ]])
     )
     return True
@@ -223,7 +223,7 @@ async def start(client, message):
         user_id = message.from_user.id
         if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
             buttons = [[
-                        InlineKeyboardButton('☆ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ☆', url=f'http://t.me/{temp.U_NAME}?startgroup=true')
+                        InlineKeyboardButton('✦ 𝐀𝐃𝐃 𝐌𝐄 𝐓𝐎 𝐘𝐎𝐔𝐑 𝐆𝐑𝐎𝐔𝐏 ✦', url=f'http://t.me/{temp.U_NAME}?startgroup=true')
                       ]]
             reply_markup = InlineKeyboardMarkup(buttons)
             await message.reply_text(
@@ -242,15 +242,15 @@ async def start(client, message):
             await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention, temp.B_NAME))
         if len(message.command) != 2:
             buttons = [[
-                        InlineKeyboardButton('☆ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ☆', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
+                        InlineKeyboardButton('✦ 𝐀𝐃𝐃 𝐌𝐄 𝐓𝐎 𝐘𝐎𝐔𝐑 𝐆𝐑𝐎𝐔𝐏 ✦', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
                     ],[
-                        InlineKeyboardButton('✪ ᴜᴘᴅᴀᴛᴇꜱ ✪', callback_data='channels'), 
-                        InlineKeyboardButton('⚔️ғᴇᴀᴛᴜʀᴇs ⚔️', callback_data='features')
+                        InlineKeyboardButton('『 🎬 𝐔𝐏𝐃𝐀𝐓𝐄𝐒 』', callback_data='channels'), 
+                        InlineKeyboardButton('✦ 𝐅𝐄𝐀𝐓𝐔𝐑𝐄𝐒 ✦', callback_data='features')
                     ],[
-                        InlineKeyboardButton('🍀 Hᴇʟᴘ 🍀', callback_data='help'),
-                        InlineKeyboardButton('🤖 ᴀʙᴏᴜᴛ 🤖', callback_data='about')
+                        InlineKeyboardButton('◈ 𝐇𝐄𝐋𝐏 ◈', callback_data='help'),
+                        InlineKeyboardButton('『 𝐀𝐁𝐎𝐔𝐓 』', callback_data='about')
                     ],[
-                        InlineKeyboardButton('★ ᴘʀᴇᴍɪᴜᴍ ʜᴜʙ ★', callback_data="premium_hub")
+                        InlineKeyboardButton('♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』', callback_data="premium_hub")
                     ]]
             sponsor_button = await get_sponsor_button()
             if sponsor_button:
@@ -301,16 +301,16 @@ async def start(client, message):
             return
         if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
             buttons = [[
-                        InlineKeyboardButton('☆ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ☆', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
+                        InlineKeyboardButton('✦ 𝐀𝐃𝐃 𝐌𝐄 𝐓𝐎 𝐘𝐎𝐔𝐑 𝐆𝐑𝐎𝐔𝐏 ✦', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
                     ],[
-                        InlineKeyboardButton('✪ ᴜᴘᴅᴀᴛᴇꜱ ✪', callback_data='channels'), 
-                        InlineKeyboardButton('⚔️ ғᴇᴀᴛᴜʀᴇs ⚔️', callback_data='features')
+                        InlineKeyboardButton('『 🎬 𝐔𝐏𝐃𝐀𝐓𝐄𝐒 』', callback_data='channels'), 
+                        InlineKeyboardButton('✦ 𝐅𝐄𝐀𝐓𝐔𝐑𝐄𝐒 ✦', callback_data='features')
                     ],[
-                        InlineKeyboardButton('🍀 Hᴇʟᴘ 🍀', callback_data='help'),
-                        InlineKeyboardButton('🤖 ᴀʙᴏᴜᴛ 🤖', callback_data='about')
+                        InlineKeyboardButton('◈ 𝐇𝐄𝐋𝐏 ◈', callback_data='help'),
+                        InlineKeyboardButton('『 𝐀𝐁𝐎𝐔𝐓 』', callback_data='about')
                     ],[
-                        InlineKeyboardButton('🆓 ᴘʀᴇᴍɪᴜᴍ', callback_data="pm_reff"), 
-                        InlineKeyboardButton('✨ ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ ✨', callback_data="premium_info")
+                        InlineKeyboardButton('✦ 𝐅𝐑𝐄𝐄 𝐓𝐑𝐈𝐀𝐋 ✦', callback_data="pm_reff"), 
+                        InlineKeyboardButton('꧁ 👑 𝐁𝐔𝐘 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 ꧂', callback_data="premium_info")
                     ]]
             sponsor_button = await get_sponsor_button()
             if sponsor_button:
@@ -329,9 +329,9 @@ async def start(client, message):
             return
         if len(message.command) == 2 and message.command[1] in ["Looteredev"]:
             buttons = [[
-                        InlineKeyboardButton('📲 ꜱᴇɴᴅ ᴘᴀʏᴍᴇɴᴛ ꜱᴄʀᴇᴇɴꜱʜᴏᴛ', url=f"https://t.me/{OWNER_USER_NAME}")
+                        InlineKeyboardButton('⇩ 『 𝐒𝐄𝐍𝐃 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐏𝐑𝐎𝐎𝐅 』', url=f"https://t.me/{OWNER_USER_NAME}")
                       ],[
-                        InlineKeyboardButton('❌ ᴄʟᴏꜱᴇ ❌', callback_data='close_data')
+                        InlineKeyboardButton('『 ✕ 𝐂𝐋𝐎𝐒𝐄 』', callback_data='close_data')
                       ]]
             reply_markup = InlineKeyboardMarkup(buttons)
             await message.reply_photo(
@@ -418,7 +418,7 @@ async def start(client, message):
                 
                 await client.send_message(settings['log'], script.VERIFIED_LOG_TEXT.format(Lootere.from_user.mention, user_id, datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %B %Y'), num))
                 btn = [[
-                    InlineKeyboardButton("✅ ɢᴇᴛ ꜰɪʟᴇ ✅", url=verify),
+                    InlineKeyboardButton("◈ 𝗦𝗘𝗡𝗗 𝗙𝗜𝗟𝗘 ◈", url=verify),
                 ]]
                 reply_markup=InlineKeyboardMarkup(btn)
                 dlt=await Lootere.reply_photo(
@@ -462,13 +462,13 @@ async def start(client, message):
                     logger.error("Make sure Bot is admin in Forcesub channel")
                     return
                 btn = [[
-                    InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link.invite_link)
+                    InlineKeyboardButton("『 𝐉𝐎𝐈𝐍 𝐂𝐇𝐀𝐍𝐍𝐄𝐋 』", url=invite_link.invite_link)
                 ]]
                 if message.command[1] != "subscribe":
                     if data.startswith("allfiles"):
-                        btn.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}")])
+                        btn.append([InlineKeyboardButton("↻ 𝐓𝐑𝐘 𝐀𝐆𝐀𝐈𝐍 ➜", url=f"https://t.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}")])
                     else:
-                        btn.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start=files_{grp_id}_{file_id}")])
+                        btn.append([InlineKeyboardButton("↻ 𝐓𝐑𝐘 𝐀𝐆𝐀𝐈𝐍 ➜", url=f"https://t.me/{temp.U_NAME}?start=files_{grp_id}_{file_id}")])
                 await client.send_message(
                     chat_id=message.from_user.id,
                     text=script.FSUB_TXT.format(message.from_user.mention),
@@ -482,13 +482,13 @@ async def start(client, message):
             if settings.get('fsub_id', AUTH_CHANNEL) and not await is_subscribed(client, message.from_user.id, channel):
                 invite_link = await client.create_chat_invite_link((channel), creates_join_request=True)
                 btn = [[
-                        InlineKeyboardButton("⛔️ ᴊᴏɪɴ ɴᴏᴡ ⛔️", url=invite_link.invite_link)
+                        InlineKeyboardButton("『 𝐉𝐎𝐈𝐍 𝐂𝐇𝐀𝐍𝐍𝐄𝐋 』", url=invite_link.invite_link)
                       ]]
                 if message.command[1] != "subscribe":
                     if data.startswith("allfiles"):
-                        btn.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}")])
+                        btn.append([InlineKeyboardButton("↻ 𝐓𝐑𝐘 𝐀𝐆𝐀𝐈𝐍 ➜", url=f"https://t.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}")])
                     else:
-                        btn.append([InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=f"https://t.me/{temp.U_NAME}?start=files_{grp_id}_{file_id}")])
+                        btn.append([InlineKeyboardButton("↻ 𝐓𝐑𝐘 𝐀𝐆𝐀𝐈𝐍 ➜", url=f"https://t.me/{temp.U_NAME}?start=files_{grp_id}_{file_id}")])
                 await client.send_message(
                     chat_id=message.from_user.id,
                     text=script.FSUB_TXT.format(message.from_user.mention),
@@ -516,19 +516,19 @@ async def start(client, message):
                     verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=verify_{user_id}_{verify_id}_{file_id}", grp_id, is_second_shortener, is_third_shortener)
                 if not await db.check_trial_status(user_id):
                     buttons = [[
-                        InlineKeyboardButton("✅️ ᴠᴇʀɪғʏ ✅️", url=verify)
+                        InlineKeyboardButton("✧ 𝑪𝑶𝑵𝑭𝑰𝑹𝑴 & 𝑽𝑬𝑹𝑰𝑭𝒀 ✧", url=verify)
                     ],[
-                        InlineKeyboardButton("⁉️ ʜᴏᴡ ᴛᴏ ᴠᴇʀɪғʏ ⁉️", url=tutorial)
+                        InlineKeyboardButton("『 𝐇𝐎𝐖 𝐓𝐎 𝐕𝐄𝐑𝐈𝐅𝐘 』", url=tutorial)
                     ],[
-                        InlineKeyboardButton("✨5ᴍɪɴ Pʀᴇᴍɪᴜᴍ Tʀᴀɪʟ✨", callback_data=f'give_trial')
+                        InlineKeyboardButton("✧ 𝟓𝐌𝐈𝐍 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐓𝐑𝐈𝐀𝐋 ✧", callback_data=f'give_trial')
                     ]]
                 else:
                     buttons = [[
-                        InlineKeyboardButton("✅️ ᴠᴇʀɪғʏ ✅️", url=verify)
+                        InlineKeyboardButton("✧ 𝑪𝑶𝑵𝑭𝑰𝑹𝑴 & 𝑽𝑬𝑹𝑰𝑭𝒀 ✧", url=verify)
                     ],[
-                        InlineKeyboardButton("⁉️ ʜᴏᴡ ᴛᴏ ᴠᴇʀɪғʏ ⁉️", url=tutorial)
+                        InlineKeyboardButton("『 𝐇𝐎𝐖 𝐓𝐎 𝐕𝐄𝐑𝐈𝐅𝐘 』", url=tutorial)
                     ],[
-                        InlineKeyboardButton("✨ ʀᴇᴍᴏᴠᴇ ᴠᴇʀɪғʏ ✨", callback_data=f'premium_info')
+                        InlineKeyboardButton("✧ 𝙐𝙉𝙇𝙊𝘾𝙆 𝙑𝙄𝙋 ✧", callback_data=f'premium_info')
                     ]]
                 reply_markup=InlineKeyboardMarkup(buttons) 
                 if await db.user_verified(user_id): 
@@ -587,7 +587,7 @@ async def start(client, message):
                         f"{usage_count}/{limit}</b>"
                     )
                 button = [[
-                    InlineKeyboardButton("🖥️ ᴡᴀᴛᴄʜ / ᴅᴏᴡɴʟᴏᴀᴅ 📥", callback_data=f"streaming#{file_id}#{grp_id}")
+                    InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id}")
                     ]]
                 reply_markup=InlineKeyboardMarkup(button)
                 msg = await client.send_cached_media(
@@ -621,7 +621,7 @@ async def start(client, message):
                 if not allowed:
                     return
                 button = [[
-                    InlineKeyboardButton("🖥️ ᴡᴀᴛᴄʜ / ᴅᴏᴡɴʟᴏᴀᴅ 📥", callback_data=f"streaming#{file_id}#{grp_id}")
+                    InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id}")
                     ]]
                 reply_markup=InlineKeyboardMarkup(button)
                 msg = await client.send_cached_media(
@@ -684,7 +684,7 @@ async def start(client, message):
                 f"{usage_count}/{limit}</b>"
             )
         button = [[
-            InlineKeyboardButton("🖥️ ᴡᴀᴛᴄʜ / ᴅᴏᴡɴʟᴏᴀᴅ 📥", callback_data=f"streaming#{file_id}#{grp_id}")
+            InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id}")
             ]]
         reply_markup=InlineKeyboardMarkup(button)
         msg=await client.send_cached_media(

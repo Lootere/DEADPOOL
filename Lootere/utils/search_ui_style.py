@@ -14,6 +14,7 @@
 import inspect
 import logging
 import re
+import unicodedata
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 try:
@@ -131,7 +132,8 @@ def classify_search_button(
             return "normal"
         if target == "home":
             return "navigation"
-        if "vip" in raw_text.lower() or "🔒" in raw_text:
+        norm_text = unicodedata.normalize("NFKD", raw_text).lower()
+        if "vip" in norm_text or "🔒" in raw_text:
             return "vip"
         return "file"
 
@@ -181,8 +183,8 @@ def classify_search_button(
 
     # 4. Main search filter triggers & episode back button -> Red ("danger") or Green ("success")
     if cb.startswith("epi#"):
-        lowered = raw_text.lower()
-        if "back" in lowered or "ʙᴀᴄᴋ" in lowered or "⥢" in raw_text:
+        lowered = unicodedata.normalize("NFKD", raw_text).lower()
+        if "back" in lowered or "ʙᴀᴄᴋ" in lowered or "⥢" in raw_text or "◁" in raw_text:
             return "navigation"
         return "normal"
 

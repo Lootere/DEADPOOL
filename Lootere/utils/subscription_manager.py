@@ -706,18 +706,18 @@ subscription_manager = SubscriptionManager()
 
 
 def build_premium_hub_keyboard():
-    """Build Premium Hub navigation keyboard with ZERO colour emojis."""
+    """Build Premium Hub navigation keyboard with Feature 44 Premium Typography and ZERO colour emojis."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("BOT PREMIUM", callback_data="premium_info"),
-            InlineKeyboardButton("VIP DESTINATIONS", callback_data="dest_plans"),
+            InlineKeyboardButton("♕ 『 𝐁𝐎𝐓 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 』", callback_data="premium_info"),
+            InlineKeyboardButton("♛ 『 𝐕𝐈𝐏 𝐃𝐄𝐒𝐓𝐈𝐍𝐀𝐓𝐈𝐎𝐍𝐒 』", callback_data="dest_plans"),
         ],
         [
-            InlineKeyboardButton("FREE TRIAL & REFERRALS", callback_data="pm_reff"),
-            InlineKeyboardButton("MY ACTIVE PLANS", callback_data="my_plans_hub"),
+            InlineKeyboardButton("✦ 𝐅𝐑𝐄𝐄 𝐓𝐑𝐈𝐀𝐋 & 𝐑𝐄𝐅𝐄𝐑𝐑𝐀𝐋𝐒 ✦", callback_data="pm_reff"),
+            InlineKeyboardButton("༺ 💎 𝐌𝐘 𝐀𝐂𝐓𝐈𝐕𝐄 𝐏𝐋𝐀𝐍𝐒 ༻", callback_data="my_plans_hub"),
         ],
         [
-            InlineKeyboardButton("BACK TO HOME", callback_data="start"),
+            InlineKeyboardButton("◁ 𝐁𝐀𝐂𝐊 𝐓𝐎 𝐇𝐎𝐌𝐄", callback_data="start"),
         ],
     ])
 
@@ -753,19 +753,19 @@ def format_dest_plans_text(plans: List[dict], destinations: Dict[str, dict]) -> 
 
 
 def build_dest_plans_keyboard(owner_username: str = "Looteredev"):
-    """Build destination plans keyboard with ZERO colour emojis."""
+    """Build destination plans keyboard with Feature 44 Premium Typography and ZERO colour emojis."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("SELECT VIP PLAN", callback_data="pay_plan_choose#vip"),
-            InlineKeyboardButton("UPLOAD PROOF", callback_data="pay_upload_prompt"),
+            InlineKeyboardButton("♛ 『 𝐒𝐄𝐋𝐄𝐂𝐓 𝐕𝐈𝐏 𝐏𝐋𝐀𝐍 』", callback_data="pay_plan_choose#vip"),
+            InlineKeyboardButton("⇩ 『 𝐔𝐏𝐋𝐎𝐀𝐃 𝐏𝐑𝐎𝐎𝐅 』", callback_data="pay_upload_prompt"),
         ],
         [
-            InlineKeyboardButton("MY INVITE LINKS", callback_data="dest_invites"),
-            InlineKeyboardButton("CONTACT ADMIN", url=f"https://t.me/{owner_username}"),
+            InlineKeyboardButton("✦ 𝐌𝐘 𝐈𝐍𝐕𝐈𝐓𝐄 𝐋𝐈𝐍𝐊𝐒 ✦", callback_data="dest_invites"),
+            InlineKeyboardButton("◈ 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐀𝐃𝐌𝐈𝐍 ◈", url=f"https://t.me/{owner_username}"),
         ],
         [
-            InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub"),
-            InlineKeyboardButton("BACK TO HOME", callback_data="start"),
+            InlineKeyboardButton("♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』", callback_data="premium_hub"),
+            InlineKeyboardButton("◁ 𝐁𝐀𝐂𝐊 𝐓𝐎 𝐇𝐎𝐌𝐄", callback_data="start"),
         ],
     ])
 
@@ -829,13 +829,13 @@ def format_my_plans_text(bot_plan: Optional[dict], dest_sub: Optional[dict], des
 
 
 def build_my_plans_keyboard(has_dest_sub: bool = False):
-    """Build my plans keyboard with ZERO colour emojis."""
+    """Build my plans keyboard with Feature 44 Premium Typography and ZERO colour emojis."""
     buttons = []
     if has_dest_sub:
-        buttons.append([InlineKeyboardButton("VIEW INVITE LINKS", callback_data="dest_invites")])
+        buttons.append([InlineKeyboardButton("✦ 𝐌𝐘 𝐈𝐍𝐕𝐈𝐓𝐄 𝐋𝐈𝐍𝐊𝐒 ✦", callback_data="dest_invites")])
     buttons.append([
-        InlineKeyboardButton("RENEW / UPGRADE", callback_data="dest_plans"),
-        InlineKeyboardButton("PREMIUM HUB", callback_data="premium_hub"),
+        InlineKeyboardButton("✦ 𝐑𝐄𝐍𝐄𝐖 / 𝐔𝐏𝐆𝐑𝐀𝐃𝐄 ✦", callback_data="dest_plans"),
+        InlineKeyboardButton("♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』", callback_data="premium_hub"),
     ])
-    buttons.append([InlineKeyboardButton("BACK TO HOME", callback_data="start")])
+    buttons.append([InlineKeyboardButton("◁ 𝐁𝐀𝐂𝐊 𝐓𝐎 𝐇𝐎𝐌𝐄", callback_data="start")])
     return InlineKeyboardMarkup(buttons)
