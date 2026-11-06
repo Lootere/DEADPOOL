@@ -342,9 +342,169 @@ footer {
 
     </style>
 
+
+<style id="rkmovieszip-responsive-snow-fix">
+/* Final layout correction: override the legacy external two-column layout. */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { width: 100%; min-width: 0; overflow-x: hidden !important; }
+body { position: relative; }
+.outer {
+  display: block !important;
+  width: min(1180px, calc(100% - 32px)) !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+}
+.outer > .inner {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+}
+.outer > .inner > .main,
+.outer > .inner > .abt {
+  display: block !important;
+  float: none !important;
+  clear: both !important;
+  position: relative !important;
+  inset: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  flex: 0 0 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+.main { overflow: visible !important; }
+video.player {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 16 / 9 !important;
+}
+.downloadBtn {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.downloadBtn button { min-width: 0 !important; white-space: normal !important; overflow-wrap: anywhere; }
+.downloadBtn button img { object-fit: contain; }
+.abt { width: 100% !important; max-width: 100% !important; }
+.about, .about-dets { width: 100% !important; max-width: 100% !important; }
+.abt-sec { width: 100% !important; max-width: 100% !important; scroll-margin-top: 90px; }
+.about-nav {
+  position: relative !important;
+  inset: auto !important;
+  z-index: 5 !important;
+  width: min(900px, calc(100% - 32px)) !important;
+  margin: 18px auto 24px !important;
+}
+.about-nav a { min-width: 0; }
+#sec2 .chnl-link {
+  display: flex !important;
+  justify-content: center;
+  width: 100%;
+  margin-top: 24px;
+}
+#sec2 .chnl-link a { display: block; width: min(100%, 520px); text-decoration: none; }
+#sec2 .chnl-link button {
+  width: 100%;
+  min-height: 58px;
+  cursor: pointer;
+}
+#sec2 { display: block !important; }
+
+/* Decorative falling snow. Pointer-events are disabled so controls remain clickable. */
+.rk-snow {
+  position: fixed;
+  inset: -120% 0 0;
+  z-index: 999;
+  pointer-events: none;
+  opacity: .52;
+  background-repeat: repeat;
+  will-change: transform;
+}
+.rk-snow--back {
+  opacity: .30;
+  background-image:
+    radial-gradient(2px 2px at 40px 60px, rgba(255,255,255,.9) 98%, transparent),
+    radial-gradient(2px 2px at 120px 150px, rgba(255,239,205,.8) 98%, transparent),
+    radial-gradient(1.5px 1.5px at 200px 90px, rgba(255,255,255,.8) 98%, transparent);
+  background-size: 260px 260px;
+  animation: rk-snow-fall 28s linear infinite;
+}
+.rk-snow--front {
+  opacity: .42;
+  background-image:
+    radial-gradient(3px 3px at 70px 80px, rgba(255,255,255,.92) 98%, transparent),
+    radial-gradient(2.5px 2.5px at 180px 190px, rgba(255,239,205,.9) 98%, transparent),
+    radial-gradient(2px 2px at 250px 40px, rgba(255,255,255,.85) 98%, transparent);
+  background-size: 320px 320px;
+  animation: rk-snow-fall 18s linear infinite;
+}
+@keyframes rk-snow-fall {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(28px, 120%, 0); }
+}
+
+/* Tablet and desktop: comfortable wide player and balanced controls. */
+@media (min-width: 681px) {
+  .main { padding: clamp(18px, 3vw, 34px) !important; }
+  .downloadBtn { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .downloadBtn button:last-child { grid-column: 1 / -1 !important; }
+}
+
+/* Phones: one full-width column, no squeezed half-page player. */
+@media (max-width: 680px) {
+  nav {
+    position: relative !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 13px 15px !important;
+  }
+  .nleft, .nryt { min-width: 0; }
+  #heading { font-size: clamp(21px, 6vw, 29px) !important; }
+  .nryt a { padding: 8px 10px !important; }
+  .about-nav {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    border-radius: 18px !important;
+  }
+  .about-nav a {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 12px 8px !important;
+    font-size: 11px !important;
+    text-align: center !important;
+  }
+  .about-nav a:last-child { grid-column: 1 / -1; }
+  .outer { width: calc(100% - 20px) !important; }
+  .main { padding: 10px !important; }
+  video.player { max-height: none !important; }
+  .downloadBtn { grid-template-columns: 1fr !important; }
+  .downloadBtn button, .downloadBtn button:last-child {
+    grid-column: 1 !important;
+    min-height: 58px !important;
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+  }
+  .abt { margin-top: 28px !important; }
+  .abt-sec { padding: 48px 16px !important; }
+  footer { width: calc(100% - 24px) !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rk-snow { animation: none !important; }
+}
+</style>
+
 </head>
 
 <body>
+    <div class="rk-snow rk-snow--back" aria-hidden="true"></div>
+    <div class="rk-snow rk-snow--front" aria-hidden="true"></div>
+
     <nav>
         <div class="nleft">
             <a href="https://t.me/Rkmovieszip">
@@ -440,6 +600,15 @@ footer {
                                         BOT</button></a> 
                             </div>
                         </div> -->
+                        <div class="abt-sec" id="sec2">
+                            <h1 style="text-align: center;">OUR <span>CHANNELS</span></h1>
+                            <p style="text-align: center;">Join the official RKMOVIESZIP Telegram channel for updates.</p>
+                            <div class="links chnl-link">
+                                <a class="magnet" href="https://t.me/rkmovieszip" target="_blank" rel="noopener noreferrer">
+                                    <button type="button">RKMOVIESZIP OFFICIAL CHANNEL</button>
+                                </a>
+                            </div>
+                        </div>
                         <div class="abt-sec" id="sec4">
 
                             <p style="text-align: center;">we can tal'k for your support and you can report through
@@ -495,9 +664,11 @@ footer {
     document.addEventListener("DOMContentLoaded", function () {
         const uncopyableElement = document.querySelector(".uncopyable");
 
-        uncopyableElement.addEventListener("selectstart", function (event) {
-            event.preventDefault();
-        });
+        if (uncopyableElement) {
+            uncopyableElement.addEventListener("selectstart", function (event) {
+                event.preventDefault();
+            });
+        }
     });
 </script>
 <script src="js/wow.min.js"></script>
