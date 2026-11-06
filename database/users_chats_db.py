@@ -565,6 +565,20 @@ class Database:
 
         user_id = int(user_id)
         usage_date = datetime.now(pytz.timezone("Asia/Kolkata")).date().isoformat()
+
+        if limit > 0:
+            fast_updated = await self.col.find_one_and_update(
+                {
+                    "id": user_id,
+                    "daily_usage_date": usage_date,
+                    key: {"$lt": limit},
+                },
+                {"$inc": {key: 1}},
+                return_document=ReturnDocument.AFTER,
+            )
+            if fast_updated:
+                return True, fast_updated[key]
+
         await self.col.update_one(
             {"id": user_id},
             {"$setOnInsert": self.new_user(user_id, "None")},

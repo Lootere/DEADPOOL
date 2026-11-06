@@ -2574,12 +2574,14 @@ async def cb_handler(client: Client, query: CallbackQuery):
             build_ad_verification_keyboard,
             build_ad_verification_prompt_text,
         )
-        parts = query.data.split("#", 3)
-        if len(parts) != 4:
-            return await query.answer("Invalid file unlock request.", show_alert=True)
-        _, grp_id_str, pre, file_id = parts
-        grp_id = int(grp_id_str) if grp_id_str.lstrip("-").isdigit() else 0
         user_id = query.from_user.id
+        parsed = ad_unlock_manager.parse_unlock_start_callback(
+            query.data,
+            default_grp_id=temp.CHAT.get(user_id, 0),
+        )
+        if not parsed:
+            return await query.answer("Invalid file unlock request.", show_alert=True)
+        grp_id, pre, file_id = parsed
 
         files_ = await get_file_details(file_id)
         if not files_:

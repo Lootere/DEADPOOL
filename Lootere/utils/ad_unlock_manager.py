@@ -7,12 +7,15 @@
 # - Reuses existing verify_id shortener verification infrastructure
 # - Safe retry on Telegram delivery errors within expiry window
 # - Atomic state transitions, MongoDB unique/TTL indexes & replay protection
+# - Strict <= 64-byte Telegram callback_data compliance to prevent BUTTON_DATA_INVALID
 
 import asyncio
+import hashlib
 import importlib.util
 import logging
 from pathlib import Path
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -50,6 +53,8 @@ STATE_EXPIRED = "EXPIRED"
 STATE_FAILED = "FAILED"
 
 DEFAULT_AD_UNLOCK_EXPIRY_SECONDS = 600  # 10 minutes default (Section 4)
+TELEGRAM_MAX_CALLBACK_BYTES = 64
+_SETTINGS_CACHE_TTL_SECONDS = 60.0
 
 
 def _utcnow() -> datetime:
@@ -80,7 +85,7 @@ def build_daily_limit_exhausted_keyboard(
     ad_unlock_enabled: bool = True,
     use_plain_fallback: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Build the Section 2.1 Daily Limit Reached keyboard with Feature 44 Unicode buttons."""
+    """Build the Section 2.1 Daily Limit Reached keyboard with strict <=64-byte callback_data."""
     buy_label = get_button_label("ad_buy_premium", use_plain_fallback=use_plain_fallback)
     watch_label = get_button_label("ad_watch_unlock", use_plain_fallback=use_plain_fallback)
     back_label = get_button_label("nav_back", use_plain_fallback=use_plain_fallback)
@@ -89,11 +94,16 @@ def build_daily_limit_exhausted_keyboard(
         [InlineKeyboardButton(buy_label, callback_data="premium_info")],
     ]
     if ad_unlock_enabled and canonical_file_id:
+        cb_data = ad_unlock_manager.build_unlock_start_callback_data(
+            grp_id=int(grp_id or 0),
+            pre=str(pre or "files"),
+            canonical_file_id=str(canonical_file_id),
+        )
         rows.append(
             [
                 InlineKeyboardButton(
                     watch_label,
-                    callback_data=f"ad_unlock_start#{int(grp_id)}#{pre}#{canonical_file_id}",
+                    callback_data=cb_data,
                 )
             ]
         )
@@ -160,9 +170,13 @@ def build_ad_verified_delivery_keyboard(
 class AdUnlockManager:
     """Manages one-time Watch Ad to Unlock requests, verification, and atomic delivery."""
 
+    _file_context: Dict[str, Tuple[int, str, str]] = {}
+    _intent_map: Dict[str, Tuple[int, str, str]] = {}
+
     def __init__(self) -> None:
         self._requests: Dict[str, Dict[str, Any]] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
+        self._settings_cache: Dict[Tuple[int, str], Tuple[float, Any]] = {}
         self._enabled: bool = True
         self._expiry_seconds: int = DEFAULT_AD_UNLOCK_EXPIRY_SECONDS
         self._personal_locked_files: Set[str] = set()
@@ -185,21 +199,107 @@ class AdUnlockManager:
             self._locks[unlock_request_id] = asyncio.Lock()
         return self._locks[unlock_request_id]
 
+    def _invalidate_settings_cache(self, user_db: Any = None, key: Optional[str] = None) -> None:
+        if user_db is None or key is None:
+            self._settings_cache.clear()
+            return
+        self._settings_cache.pop((id(user_db), key), None)
+
+    async def _get_cached_db_setting(self, user_db: Any, key: str, default: Any) -> Any:
+        if user_db is None or not hasattr(user_db, "get_setting"):
+            return default
+        cache_key = (id(user_db), key)
+        now_mono = time.monotonic()
+        cached = self._settings_cache.get(cache_key)
+        if cached is not None and (now_mono - cached[0]) < _SETTINGS_CACHE_TTL_SECONDS:
+            return cached[1]
+        try:
+            val = await user_db.get_setting(key, default=default)
+            self._settings_cache[cache_key] = (now_mono, val)
+            return val
+        except Exception:
+            return default
+
+    # ------------------------------------------------------------------
+    # Compact <=64-Byte Callback Encoding & Resolution (Fixes BUTTON_DATA_INVALID)
+    # ------------------------------------------------------------------
+
+    def build_unlock_start_callback_data(
+        self,
+        grp_id: int,
+        pre: str,
+        canonical_file_id: str,
+    ) -> str:
+        """Build a callback_data string guaranteed to be <= 64 UTF-8 bytes."""
+        clean_fid = str(canonical_file_id or "").strip()
+        clean_pre = str(pre or "files").strip()
+        clean_grp = int(grp_id or 0)
+
+        # Store context by canonical_file_id and by deterministic 10-char intent hash
+        self._file_context[clean_fid] = (clean_grp, clean_pre, clean_fid)
+        digest = hashlib.sha256(f"{clean_grp}:{clean_pre}:{clean_fid}".encode("utf-8")).hexdigest()[:10].upper()
+        intent_id = f"I{digest}"
+        self._intent_map[intent_id] = (clean_grp, clean_pre, clean_fid)
+
+        # 1. If full format fits within 64 bytes (e.g. short IDs), use it directly
+        full_cb = f"ad_unlock_start#{clean_grp}#{clean_pre}#{clean_fid}"
+        if len(full_cb.encode("utf-8")) <= TELEGRAM_MAX_CALLBACK_BYTES:
+            return full_cb
+
+        # 2. If `ad_unlock_start#<file_id>` fits within 64 bytes (true for all 36-char unpacked Telegram file_ids: 16+36=52 bytes),
+        #    use it so the canonical_file_id itself is embedded in the button and survives bot restarts!
+        fid_only_cb = f"ad_unlock_start#{clean_fid}"
+        if len(fid_only_cb.encode("utf-8")) <= TELEGRAM_MAX_CALLBACK_BYTES:
+            return fid_only_cb
+
+        # 3. Fallback for 50+ char raw file_ids: use compact 29-byte intent reference
+        return f"ad_unlock_start#i#{intent_id}"
+
+    def parse_unlock_start_callback(
+        self,
+        callback_data: str,
+        default_grp_id: int = 0,
+    ) -> Optional[Tuple[int, str, str]]:
+        """Resolve any `ad_unlock_start#...` callback_data into (grp_id, pre, canonical_file_id)."""
+        raw = str(callback_data or "")
+        if not raw.startswith("ad_unlock_start#"):
+            return None
+        rest = raw[len("ad_unlock_start#"):]
+        if not rest:
+            return None
+
+        # Format 3: `ad_unlock_start#i#<intent_id>`
+        if rest.startswith("i#"):
+            intent_id = rest[2:]
+            return self._intent_map.get(intent_id)
+
+        # Format 1: `ad_unlock_start#<grp_id>#<pre>#<file_id>`
+        parts = rest.split("#", 2)
+        if len(parts) == 3 and (parts[0].lstrip("-").isdigit() and parts[1] in ("files", "filep", "")):
+            grp_id = int(parts[0])
+            pre = parts[1] or "files"
+            file_id = parts[2]
+            if not file_id:
+                return None
+            return grp_id, pre, file_id
+
+        # Format 2: `ad_unlock_start#<file_id>` (compact 52-byte restart-safe format)
+        file_id = rest
+        if file_id in self._file_context:
+            return self._file_context[file_id]
+        return int(default_grp_id or 0), "files", file_id
+
     # ------------------------------------------------------------------
     # Admin Configuration & Feature 43 Personal/Bulk File Lock Management
     # ------------------------------------------------------------------
 
     async def is_enabled(self, user_db: Any = None) -> bool:
-        if user_db is not None and hasattr(user_db, "get_setting"):
-            try:
-                val = await user_db.get_setting("AD_UNLOCK_ENABLED", default=self._enabled)
-                return bool(val)
-            except Exception:
-                pass
-        return self._enabled
+        val = await self._get_cached_db_setting(user_db, "AD_UNLOCK_ENABLED", self._enabled)
+        return bool(val)
 
     async def set_enabled(self, enabled: bool, user_db: Any = None) -> bool:
         self._enabled = bool(enabled)
+        self._invalidate_settings_cache(user_db, "AD_UNLOCK_ENABLED")
         if user_db is not None and hasattr(user_db, "set_setting"):
             try:
                 await user_db.set_setting("AD_UNLOCK_ENABLED", self._enabled)
@@ -208,16 +308,12 @@ class AdUnlockManager:
         return self._enabled
 
     async def get_expiry_seconds(self, user_db: Any = None) -> int:
-        if user_db is not None and hasattr(user_db, "get_setting"):
-            try:
-                val = await user_db.get_setting("AD_UNLOCK_EXPIRY_SECONDS", default=self._expiry_seconds)
-                return max(60, int(val))
-            except Exception:
-                pass
-        return self._expiry_seconds
+        val = await self._get_cached_db_setting(user_db, "AD_UNLOCK_EXPIRY_SECONDS", self._expiry_seconds)
+        return max(60, int(val))
 
     async def set_expiry_seconds(self, seconds: int, user_db: Any = None) -> int:
         self._expiry_seconds = max(60, int(seconds))
+        self._invalidate_settings_cache(user_db, "AD_UNLOCK_EXPIRY_SECONDS")
         if user_db is not None and hasattr(user_db, "set_setting"):
             try:
                 await user_db.set_setting("AD_UNLOCK_EXPIRY_SECONDS", self._expiry_seconds)
@@ -231,6 +327,7 @@ class AdUnlockManager:
         if not clean_id:
             return
         self._personal_locked_files.add(clean_id)
+        self._invalidate_settings_cache(user_db, "PERSONAL_LOCKED_FILES")
         if user_db is not None and hasattr(user_db, "get_setting") and hasattr(user_db, "set_setting"):
             try:
                 existing = await user_db.get_setting("PERSONAL_LOCKED_FILES", default=[])
@@ -243,6 +340,7 @@ class AdUnlockManager:
         """Feature 43: Remove Admin Personal lock from a specific file_id."""
         clean_id = str(canonical_file_id or "").strip()
         self._personal_locked_files.discard(clean_id)
+        self._invalidate_settings_cache(user_db, "PERSONAL_LOCKED_FILES")
         if user_db is not None and hasattr(user_db, "get_setting") and hasattr(user_db, "set_setting"):
             try:
                 existing = await user_db.get_setting("PERSONAL_LOCKED_FILES", default=[])
@@ -253,13 +351,9 @@ class AdUnlockManager:
 
     async def get_personal_locked_files(self, user_db: Any = None) -> Set[str]:
         locked = set(self._personal_locked_files)
-        if user_db is not None and hasattr(user_db, "get_setting"):
-            try:
-                db_locked = await user_db.get_setting("PERSONAL_LOCKED_FILES", default=[])
-                if db_locked:
-                    locked.update(str(x) for x in db_locked)
-            except Exception:
-                pass
+        db_locked = await self._get_cached_db_setting(user_db, "PERSONAL_LOCKED_FILES", [])
+        if db_locked:
+            locked.update(str(x) for x in db_locked)
         return locked
 
     async def lock_bulk_pattern(self, pattern: str, user_db: Any = None) -> None:
@@ -268,6 +362,7 @@ class AdUnlockManager:
         if not clean_pat:
             return
         self._bulk_locked_patterns.add(clean_pat)
+        self._invalidate_settings_cache(user_db, "BULK_LOCKED_PATTERNS")
         if user_db is not None and hasattr(user_db, "get_setting") and hasattr(user_db, "set_setting"):
             try:
                 existing = await user_db.get_setting("BULK_LOCKED_PATTERNS", default=[])
@@ -280,6 +375,7 @@ class AdUnlockManager:
         """Feature 43 Bulk Lock: Remove bulk lock pattern."""
         clean_pat = str(pattern or "").strip().casefold()
         self._bulk_locked_patterns.discard(clean_pat)
+        self._invalidate_settings_cache(user_db, "BULK_LOCKED_PATTERNS")
         if user_db is not None and hasattr(user_db, "get_setting") and hasattr(user_db, "set_setting"):
             try:
                 existing = await user_db.get_setting("BULK_LOCKED_PATTERNS", default=[])
@@ -290,13 +386,9 @@ class AdUnlockManager:
 
     async def get_bulk_locked_patterns(self, user_db: Any = None) -> Set[str]:
         patterns = set(self._bulk_locked_patterns)
-        if user_db is not None and hasattr(user_db, "get_setting"):
-            try:
-                db_patterns = await user_db.get_setting("BULK_LOCKED_PATTERNS", default=[])
-                if db_patterns:
-                    patterns.update(str(x).casefold() for x in db_patterns)
-            except Exception:
-                pass
+        db_patterns = await self._get_cached_db_setting(user_db, "BULK_LOCKED_PATTERNS", [])
+        if db_patterns:
+            patterns.update(str(x).casefold() for x in db_patterns)
         return patterns
 
     async def is_file_premium_locked(
@@ -464,19 +556,17 @@ class AdUnlockManager:
             await self._save_request_record(record, user_db=user_db)
             self._metrics["requests_created"] += 1
             logger.info(
-                "Created ad_unlock_request id=%s user_id=%s file_id=%s",
+                "Created ad_unlock_request id=%s user_id=%s",
                 unlock_request_id,
                 telegram_user_id,
-                clean_file_id,
             )
             return True, "Unlock request created.", record
 
         except Exception as exc:
             logger.error(
-                "Failed to create ad_unlock_request (user_id=%s, file_id=%s): %s",
+                "Failed to create ad_unlock_request (user_id=%s, error=%s)",
                 telegram_user_id,
-                canonical_file_id,
-                exc,
+                type(exc).__name__,
             )
             return False, "Service temporarily unavailable. Please try again later.", None
 
@@ -499,7 +589,7 @@ class AdUnlockManager:
             try:
                 record = await self.get_request(req_id, user_db=user_db)
             except Exception as exc:
-                logger.error("DB error during verify_unlock_request id=%s: %s", req_id, exc)
+                logger.error("DB error during verify_unlock_request id=%s: %s", req_id, type(exc).__name__)
                 self._metrics["verifications_failed"] += 1
                 return False, "Verification service unavailable. Please try again.", None
 
@@ -588,10 +678,9 @@ class AdUnlockManager:
             await self._save_request_record(record, user_db=user_db)
             self._metrics["verifications_succeeded"] += 1
             logger.info(
-                "Verified ad_unlock_request id=%s user_id=%s file_id=%s",
+                "Verified ad_unlock_request id=%s user_id=%s",
                 req_id,
                 actor_user_id,
-                record["canonical_file_id"],
             )
             return True, "Ad verification successful!", record
 
@@ -614,7 +703,7 @@ class AdUnlockManager:
             try:
                 record = await self.get_request(req_id, user_db=user_db)
             except Exception as exc:
-                logger.error("DB error during begin_file_delivery id=%s: %s", req_id, exc)
+                logger.error("DB error during begin_file_delivery id=%s: %s", req_id, type(exc).__name__)
                 return False, "Service temporarily unavailable. Please try again.", None
 
             if not record:
@@ -706,10 +795,9 @@ class AdUnlockManager:
             await self._save_request_record(record, user_db=user_db)
             self._metrics["deliveries_succeeded"] += 1
             logger.info(
-                "Consumed ad_unlock_request id=%s user_id=%s file_id=%s ref=%s",
+                "Consumed ad_unlock_request id=%s user_id=%s ref=%s",
                 req_id,
                 record["telegram_user_id"],
-                record["canonical_file_id"],
                 record["delivery_reference"],
             )
             return True, record

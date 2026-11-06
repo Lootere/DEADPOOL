@@ -197,9 +197,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                     Listening on host <code>0.0.0.0:3000</code> &bull; Timezone: Asia/Kolkata
                 </div>
             </div>
-            <div class="status-badge">
-                <span class="status-dot"></span>
-                ACTIVE
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <a href="/download/RKMOVIESZIP_Updated_Project.zip" download="RKMOVIESZIP_Updated_Project.zip" style="text-decoration: none; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; background-color: var(--accent-color); color: #ffffff;">
+                    Download Project ZIP
+                </a>
+                <div class="status-badge">
+                    <span class="status-dot"></span>
+                    ACTIVE
+                </div>
             </div>
         </div>
 
@@ -280,7 +285,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                     <span class="card-tag">READY</span>
                 </div>
                 <p class="card-desc">
-                    1 verified ad = 1 single-file delivery when Free daily limit is exhausted, with Feature 43 lock precedence and safe retry on delivery errors.
+                    1 verified ad = 1 single-file delivery when Free daily limit is exhausted, with <=64-byte callback safety &amp; fast 3-query delivery pipeline.
                 </p>
             </div>
         </div>
@@ -321,6 +326,20 @@ class BotDashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(DASHBOARD_HTML.encode("utf-8"))
+        elif self.path == "/download/RKMOVIESZIP_Updated_Project.zip":
+            zip_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RKMOVIESZIP_Updated_Project.zip")
+            if os.path.isfile(zip_file):
+                with open(zip_file, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", 'attachment; filename="RKMOVIESZIP_Updated_Project.zip"')
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_response(404)
+                self.end_headers()
         elif self.path in ("/health", "/api/health"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

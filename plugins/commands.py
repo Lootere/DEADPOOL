@@ -187,29 +187,35 @@ async def _consume_daily_limit(
     file_id=None,
     grp_id=0,
     pre="files",
+    is_premium=None,
 ):
-    if await db.has_premium_access(message.from_user.id):
+    user_id = message.from_user.id
+    if is_premium is None:
+        is_premium = await db.has_premium_access(user_id)
+    if is_premium:
         return True, None
     if not settings.get("filelock", LIMIT_MODE):
         return True, None
 
     limit = int(settings.get(setting_key, default_limit))
     allowed, count = await db.consume_daily_limit(
-        message.from_user.id,
+        user_id,
         counter,
         limit,
     )
     if not allowed:
         if counter == "files_count" and file_id:
+            temp.CHAT[user_id] = int(grp_id or 0)
             ad_enabled = await ad_unlock_manager.is_enabled(user_db=db)
+            kb = build_daily_limit_exhausted_keyboard(
+                grp_id=int(grp_id or 0),
+                canonical_file_id=str(file_id),
+                pre=str(pre or "files"),
+                ad_unlock_enabled=ad_enabled,
+            )
             await message.reply_text(
                 build_daily_limit_exhausted_text(),
-                reply_markup=build_daily_limit_exhausted_keyboard(
-                    grp_id=int(grp_id or 0),
-                    canonical_file_id=str(file_id),
-                    pre=str(pre or "files"),
-                    ad_unlock_enabled=ad_enabled,
-                ),
+                reply_markup=kb,
                 parse_mode=enums.ParseMode.HTML,
             )
         else:
@@ -226,15 +232,20 @@ async def _consume_daily_limit(
 
 
 async def _is_shortener_enabled(settings):
-    global_enabled = await db.get_setting("IS_VERIFY", default=IS_VERIFY)
-    return bool(settings.get("is_verify", IS_VERIFY) and global_enabled)
-
-
-async def _deny_resolution_locked_file(message, file_id):
-    user_id = message.from_user.id
-    if await db.has_premium_access(user_id):
+    if not settings.get("is_verify", IS_VERIFY):
         return False
-    file_details = await get_file_details(file_id)
+    global_enabled = await db.get_setting("IS_VERIFY", default=IS_VERIFY)
+    return bool(global_enabled)
+
+
+async def _deny_resolution_locked_file(message, file_id, is_premium=None, file_details=None):
+    user_id = message.from_user.id
+    if is_premium is None:
+        is_premium = await db.has_premium_access(user_id)
+    if is_premium:
+        return False
+    if file_details is None:
+        file_details = await get_file_details(file_id)
     file_name = file_details[0].file_name if file_details else None
     is_locked = await ad_unlock_manager.is_file_premium_locked(
         file_id,
@@ -340,8 +351,11 @@ async def execute_ad_unlocked_file_delivery(
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
-    try: 
-        await message.react(emoji=random.choice(REACTION), big=True)
+    try:
+        try:
+            await message.react(emoji=random.choice(REACTION), big=True)
+        except Exception:
+            pass
         user_id = message.from_user.id
         if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
             buttons = [[
@@ -353,7 +367,7 @@ async def start(client, message):
                 reply_markup=reply_markup,
                 parse_mode=enums.ParseMode.HTML
             )
-            await asyncio.sleep(2) # 😢 https://github.com/EvamariaTG/EvaMaria/blob/master/plugins/p_ttishow.py#L17 😬 wait a bit, before checking.
+            await asyncio.sleep(2)
             if not await db.get_chat(message.chat.id):
                 total=await client.get_chat_members_count(message.chat.id)
                 await client.send_message(LOG_CHANNEL, script.LOG_TEXT_G.format(temp.B_NAME, message.chat.title, message.chat.id, total, "Unknown"))       
@@ -361,7 +375,10 @@ async def start(client, message):
             return 
         if not await db.is_user_exist(message.from_user.id):
             await db.add_user(message.from_user.id, message.from_user.first_name)
-            await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention, temp.B_NAME))
+            try:
+                await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention, temp.B_NAME))
+            except Exception:
+                pass
         if len(message.command) != 2:
             buttons = [[
                         InlineKeyboardButton('✦ 𝐀𝐃𝐃 𝐌𝐄 𝐓𝐎 𝐘𝐎𝐔𝐑 𝐆𝐑𝐎𝐔𝐏 ✦', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
@@ -378,16 +395,28 @@ async def start(client, message):
             if sponsor_button:
                 buttons.append([sponsor_button])
             reply_markup = InlineKeyboardMarkup(buttons)
-            m=await message.reply_sticker("CAACAgQAAxkBAAEKeqNlIpmeUoOEsEWOWEiPxPi3hH5q-QACbg8AAuHqsVDaMQeY6CcRojAE") 
-            await asyncio.sleep(2)
-            await m.delete()
-            await message.reply_photo(
-                photo=random.choice(PICS),
-                caption=await get_start_message(message.from_user.mention, temp.U_NAME, temp.B_NAME),
-                reply_markup=reply_markup,
-                has_spoiler=True,
-                parse_mode=enums.ParseMode.HTML
-            )
+            try:
+                m = await message.reply_sticker("CAACAgQAAxkBAAEKeqNlIpmeUoOEsEWOWEiPxPi3hH5q-QACbg8AAuHqsVDaMQeY6CcRojAE")
+                await asyncio.sleep(1)
+                await m.delete()
+            except Exception:
+                pass
+            start_caption = await get_start_message(message.from_user.mention, temp.U_NAME, temp.B_NAME, user_id=user_id)
+            try:
+                await message.reply_photo(
+                    photo=random.choice(PICS),
+                    caption=start_caption,
+                    reply_markup=reply_markup,
+                    has_spoiler=True,
+                    parse_mode=enums.ParseMode.HTML
+                )
+            except Exception:
+                await message.reply_text(
+                    text=start_caption,
+                    reply_markup=reply_markup,
+                    parse_mode=enums.ParseMode.HTML,
+                    disable_web_page_preview=True,
+                )
             return
         if message.command[1].startswith("playlist_"):
             token = message.command[1][len("playlist_"):]
@@ -438,16 +467,28 @@ async def start(client, message):
             if sponsor_button:
                 buttons.append([sponsor_button])
             reply_markup = InlineKeyboardMarkup(buttons)
-            m=await message.reply_sticker("CAACAgQAAxkBAAEKeqNlIpmeUoOEsEWOWEiPxPi3hH5q-QACbg8AAuHqsVDaMQeY6CcRojAE") 
-            await asyncio.sleep(2)
-            await m.delete()
-            await message.reply_photo(
-                photo=random.choice(PICS),
-                caption=await get_start_message(message.from_user.mention, temp.U_NAME, temp.B_NAME),
-                reply_markup=reply_markup,
-                has_spoiler=True,
-                parse_mode=enums.ParseMode.HTML
-            )
+            try:
+                m = await message.reply_sticker("CAACAgQAAxkBAAEKeqNlIpmeUoOEsEWOWEiPxPi3hH5q-QACbg8AAuHqsVDaMQeY6CcRojAE")
+                await asyncio.sleep(1)
+                await m.delete()
+            except Exception:
+                pass
+            start_caption = await get_start_message(message.from_user.mention, temp.U_NAME, temp.B_NAME, user_id=user_id)
+            try:
+                await message.reply_photo(
+                    photo=random.choice(PICS),
+                    caption=start_caption,
+                    reply_markup=reply_markup,
+                    has_spoiler=True,
+                    parse_mode=enums.ParseMode.HTML
+                )
+            except Exception:
+                await message.reply_text(
+                    text=start_caption,
+                    reply_markup=reply_markup,
+                    parse_mode=enums.ParseMode.HTML,
+                    disable_web_page_preview=True,
+                )
             return
         if len(message.command) == 2 and message.command[1] in ["Looteredev"]:
             buttons = [[
@@ -599,14 +640,20 @@ async def start(client, message):
                 )
                 return
         
+        t_start = t.perf_counter()
         data = message.command[1]
-        if data.startswith("allfiles_") and not await db.has_premium_access(message.from_user.id):
+        t_prem0 = t.perf_counter()
+        is_premium = await db.has_premium_access(user_id)
+        prem_check_ms = (t.perf_counter() - t_prem0) * 1000.0
+
+        if data.startswith("allfiles_") and not is_premium:
             return await _send_all_vip_required(message)
         try:
             pre, grp_id, file_id = data.split('_', 2)
-        except:
+        except Exception:
             pre, grp_id, file_id = "", 0, data
-        settings = await get_settings(int(data.split("_", 2)[1]))
+        grp_id_int = int(grp_id) if str(grp_id).lstrip("-").isdigit() else 0
+        settings = await get_settings(grp_id_int)
         missing_dynamic_channels = await _get_unsubscribed_dynamic_channels(
             client,
             message,
@@ -664,55 +711,66 @@ async def start(client, message):
                     parse_mode=enums.ParseMode.HTML
                 )
                 return
-        if not data.startswith("allfiles") and await _deny_resolution_locked_file(message, file_id):
+
+        t_lookup0 = t.perf_counter()
+        files_ = None if (data and data.startswith("allfiles")) else await get_file_details(file_id)
+        file_lookup_ms = (t.perf_counter() - t_lookup0) * 1000.0
+
+        if not data.startswith("allfiles") and await _deny_resolution_locked_file(
+            message,
+            file_id,
+            is_premium=is_premium,
+            file_details=files_,
+        ):
             return
-        if not await db.has_premium_access(user_id):
-            settings = await get_settings(int(grp_id))
+
+        if not is_premium:
             is_verify = await _is_shortener_enabled(settings)
-            user_verified = await db.is_user_verified(user_id)
-            is_second_shortener = await db.use_second_shortener(user_id, settings.get('verify_time', TWO_VERIFY_GAP))
-            is_third_shortener = await db.use_third_shortener(user_id, settings.get('verify_time', THIRD_VERIFY_GAP))     
-            if (not user_verified or is_second_shortener or is_third_shortener) and is_verify:
-                verify_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
-                await db.create_verify_id(user_id, verify_id)
-                temp.CHAT[user_id] = grp_id
-                tutorial = settings.get('tutorial3', TUTORIAL3) if is_third_shortener else settings.get('tutorial2', TUTORIAL2) if is_second_shortener else settings.get('tutorial', TUTORIAL)
-                
-                if Lootere.command[1].startswith('allfiles'):
-                    verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=sendall_{user_id}_{verify_id}_{file_id}", grp_id, is_second_shortener, is_third_shortener)
-                else:
-                    verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=verify_{user_id}_{verify_id}_{file_id}", grp_id, is_second_shortener, is_third_shortener)
-                if not await db.check_trial_status(user_id):
-                    buttons = [[
-                        InlineKeyboardButton("✧ 𝑪𝑶𝑵𝑭𝑰𝑹𝑴 & 𝑽𝑬𝑹𝑰𝑭𝒀 ✧", url=verify)
-                    ],[
-                        InlineKeyboardButton("『 𝐇𝐎𝐖 𝐓𝐎 𝐕𝐄𝐑𝐈𝐅𝐘 』", url=tutorial)
-                    ],[
-                        InlineKeyboardButton("✧ 𝟓𝐌𝐈𝐍 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐓𝐑𝐈𝐀𝐋 ✧", callback_data=f'give_trial')
-                    ]]
-                else:
-                    buttons = [[
-                        InlineKeyboardButton("✧ 𝑪𝑶𝑵𝑭𝑰𝑹𝑴 & 𝑽𝑬𝑹𝑰𝑭𝒀 ✧", url=verify)
-                    ],[
-                        InlineKeyboardButton("『 𝐇𝐎𝐖 𝐓𝐎 𝐕𝐄𝐑𝐈𝐅𝐘 』", url=tutorial)
-                    ],[
-                        InlineKeyboardButton("✧ 𝙐𝙉𝙇𝙊𝘾𝙆 𝙑𝙄𝙋 ✧", callback_data=f'premium_info')
-                    ]]
-                reply_markup=InlineKeyboardMarkup(buttons) 
-                if await db.user_verified(user_id): 
-                    msg = script.THIRDT_VERIFICATION_TEXT   
-                else:        
-                    msg = script.SECOND_VERIFICATION_TEXT if is_second_shortener else script.VERIFICATION_TEXT
-                d = await Lootere.reply_text(
-                    text=msg.format(message.from_user.mention),
-                    protect_content = False,
-                    reply_markup=reply_markup,
-                    parse_mode=enums.ParseMode.HTML
-                )
-                await asyncio.sleep(600) 
-                await d.delete()
-                await Lootere.delete()
-                return
+            if is_verify:
+                user_verified = await db.is_user_verified(user_id)
+                is_second_shortener = await db.use_second_shortener(user_id, settings.get('verify_time', TWO_VERIFY_GAP))
+                is_third_shortener = await db.use_third_shortener(user_id, settings.get('verify_time', THIRD_VERIFY_GAP))
+                if not user_verified or is_second_shortener or is_third_shortener:
+                    verify_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
+                    await db.create_verify_id(user_id, verify_id)
+                    temp.CHAT[user_id] = grp_id_int
+                    tutorial = settings.get('tutorial3', TUTORIAL3) if is_third_shortener else settings.get('tutorial2', TUTORIAL2) if is_second_shortener else settings.get('tutorial', TUTORIAL)
+
+                    if Lootere.command[1].startswith('allfiles'):
+                        verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=sendall_{user_id}_{verify_id}_{file_id}", grp_id_int, is_second_shortener, is_third_shortener)
+                    else:
+                        verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=verify_{user_id}_{verify_id}_{file_id}", grp_id_int, is_second_shortener, is_third_shortener)
+                    if not await db.check_trial_status(user_id):
+                        buttons = [[
+                            InlineKeyboardButton("✧ 𝑪𝑶𝑵𝑭𝑰𝑹𝑴 & 𝑽𝑬𝑹𝑰𝑭𝒀 ✧", url=verify)
+                        ],[
+                            InlineKeyboardButton("『 𝐇𝐎𝐖 𝐓𝐎 𝐕𝐄𝐑𝐈𝐅𝐘 』", url=tutorial)
+                        ],[
+                            InlineKeyboardButton("✧ 𝟓𝐌𝐈𝐍 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐓𝐑𝐈𝐀𝐋 ✧", callback_data=f'give_trial')
+                        ]]
+                    else:
+                        buttons = [[
+                            InlineKeyboardButton("✧ 𝑪𝑶𝑵𝑭𝑰𝑹𝑴 & 𝑽𝑬𝑹𝑰𝑭𝒀 ✧", url=verify)
+                        ],[
+                            InlineKeyboardButton("『 𝐇𝐎𝐖 𝐓𝐎 𝐕𝐄𝐑𝐈𝐅𝐘 』", url=tutorial)
+                        ],[
+                            InlineKeyboardButton("✧ 𝙐𝙉𝙇𝙊𝘾𝙆 𝙑𝙄𝙋 ✧", callback_data=f'premium_info')
+                        ]]
+                    reply_markup=InlineKeyboardMarkup(buttons) 
+                    if await db.user_verified(user_id): 
+                        msg = script.THIRDT_VERIFICATION_TEXT   
+                    else:        
+                        msg = script.SECOND_VERIFICATION_TEXT if is_second_shortener else script.VERIFICATION_TEXT
+                    d = await Lootere.reply_text(
+                        text=msg.format(message.from_user.mention),
+                        protect_content = False,
+                        reply_markup=reply_markup,
+                        parse_mode=enums.ParseMode.HTML
+                    )
+                    await asyncio.sleep(600) 
+                    await d.delete()
+                    await Lootere.delete()
+                    return
         if data and data.startswith("allfiles"):
             files = temp.GETALL.get(file_id)
             if not files:
@@ -723,13 +781,11 @@ async def start(client, message):
                 files_ = await get_file_details(file_id)
                 if not files_:
                     logger.warning(
-                        "Send-all file missing from database (user_id=%s, file_id=%s)",
+                        "Send-all file missing from database (user_id=%s)",
                         message.from_user.id,
-                        file_id,
                     )
                     continue
                 files1 = files_[0]
-                settings = await get_settings(int(grp_id))
                 CAPTION = settings.get('caption', CUSTOM_FILE_CAPTION)
                 f_caption = CAPTION.format(
                     file_name = files1.file_name,
@@ -743,6 +799,7 @@ async def start(client, message):
                     "all_limit",
                     SEND_ALL_LIMITE,
                     script.BUTTON_LIMIT,
+                    is_premium=is_premium,
                 )
                 if not allowed:
                     if not filesarr:
@@ -755,7 +812,7 @@ async def start(client, message):
                         f"{usage_count}/{limit}</b>"
                     )
                 button = [[
-                    InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id}")
+                    InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id_int}")
                     ]]
                 reply_markup=InlineKeyboardMarkup(button)
                 msg = await client.send_cached_media(
@@ -774,10 +831,11 @@ async def start(client, message):
                     await x.delete()
                 await k.edit_text("<b>Your All Files/Videos is successfully deleted!!!</b>")
             return
-        files_ = await get_file_details(file_id)           
         if not files_:
             pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("ascii")).split("_", 1)
             try:
+                if await _deny_resolution_locked_file(message, file_id, is_premium=is_premium):
+                    return
                 allowed, usage_count = await _consume_daily_limit(
                     message,
                     settings,
@@ -786,13 +844,14 @@ async def start(client, message):
                     FILE_LIMITE,
                     script.FILE_LIMIT,
                     file_id=file_id,
-                    grp_id=grp_id,
+                    grp_id=grp_id_int,
                     pre=pre,
+                    is_premium=is_premium,
                 )
                 if not allowed:
                     return
                 button = [[
-                    InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id}")
+                    InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id_int}")
                     ]]
                 reply_markup=InlineKeyboardMarkup(button)
                 msg = await client.send_cached_media(
@@ -810,7 +869,7 @@ async def start(client, message):
                 if CUSTOM_FILE_CAPTION:
                     try:
                         f_caption=CUSTOM_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='')
-                    except:
+                    except Exception:
                         return
                 if usage_count is not None:
                     limit = int(settings.get("file_limit", FILE_LIMITE))
@@ -820,24 +879,18 @@ async def start(client, message):
                     )
                 await msg.edit_caption(f_caption)
                 return
-            except Exception:
+            except Exception as exc:
                 logger.exception(
-                    "Legacy file delivery failed (user_id=%s, file_id=%s)",
+                    "Legacy file delivery failed (user_id=%s, error_type=%s)",
                     message.from_user.id,
-                    file_id,
+                    type(exc).__name__,
                 )
                 return await message.reply(
                     "Aww, file bhejne mein issue aa gaya. Dobara try karo."
                 )
-        
-        files = files_[0]
-        settings = await get_settings(int(grp_id))
-        CAPTION = settings.get('caption', CUSTOM_FILE_CAPTION)
-        f_caption = CAPTION.format(
-            file_name = files.file_name,
-            file_size = get_size(files.file_size),
-            file_caption=files.caption
-        )
+
+        # Check daily limit BEFORE building delivery buttons or sending media
+        t_limit0 = t.perf_counter()
         allowed, usage_count = await _consume_daily_limit(
             message,
             settings,
@@ -846,11 +899,28 @@ async def start(client, message):
             FILE_LIMITE,
             script.FILE_LIMIT,
             file_id=file_id,
-            grp_id=grp_id,
+            grp_id=grp_id_int,
             pre=pre,
+            is_premium=is_premium,
         )
+        limit_check_ms = (t.perf_counter() - t_limit0) * 1000.0
         if not allowed:
+            logger.info(
+                "Daily limit exhausted routed to Feature 45 options (user_id=%s, prem_ms=%.1f, lookup_ms=%.1f, limit_ms=%.1f)",
+                user_id,
+                prem_check_ms,
+                file_lookup_ms,
+                limit_check_ms,
+            )
             return
+
+        files = files_[0]
+        CAPTION = settings.get('caption', CUSTOM_FILE_CAPTION)
+        f_caption = CAPTION.format(
+            file_name = files.file_name,
+            file_size = get_size(files.file_size),
+            file_caption=files.caption
+        )
         if usage_count is not None:
             limit = int(settings.get("file_limit", FILE_LIMITE))
             f_caption += (
@@ -858,15 +928,28 @@ async def start(client, message):
                 f"{usage_count}/{limit}</b>"
             )
         button = [[
-            InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id}")
+            InlineKeyboardButton("『 🎬 𝐖𝐀𝐓𝐂𝐇 / 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』", callback_data=f"streaming#{file_id}#{grp_id_int}")
             ]]
         reply_markup=InlineKeyboardMarkup(button)
+        t_send0 = t.perf_counter()
         msg=await client.send_cached_media(
             chat_id=message.from_user.id,
             file_id=file_id,
             caption=f_caption,
             protect_content=True if pre == 'filep' else False,
             reply_markup=reply_markup
+        )
+        send_ms = (t.perf_counter() - t_send0) * 1000.0
+        total_ms = (t.perf_counter() - t_start) * 1000.0
+        logger.info(
+            "File delivered (user_id=%s, count=%s, prem_ms=%.1f, lookup_ms=%.1f, limit_ms=%.1f, send_ms=%.1f, total_ms=%.1f)",
+            user_id,
+            usage_count,
+            prem_check_ms,
+            file_lookup_ms,
+            limit_check_ms,
+            send_ms,
+            total_ms,
         )
         await db.record_weekly_activity(message.from_user.id)
         if await db.get_setting("AUTO_FILE_DELETE", default=AUTO_FILE_DELETE):
@@ -875,11 +958,11 @@ async def start(client, message):
             await asyncio.sleep(900)
             await Lootere.delete() 
             await del_msg.edit_text("<b>ʏᴏᴜʀ ғɪʟᴇ ᴡᴀs ᴅᴇʟᴇᴛᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ ᴀғᴛᴇʀ 10 ᴍɪɴᴜᴛᴇs ᴛᴏ ᴀᴠᴏɪᴅ ᴄᴏᴘʏʀɪɢʜᴛ 📢</b>")
-    except Exception:
+    except Exception as exc:
         logger.exception(
-            "File delivery failed (user_id=%s, command=%r)",
+            "File delivery failed (user_id=%s, error_type=%s)",
             getattr(getattr(message, "from_user", None), "id", None),
-            getattr(message, "command", None),
+            type(exc).__name__,
         )
         await message.reply(
             "Aww, file bhejne mein issue aa gaya. Thodi der baad try karo."

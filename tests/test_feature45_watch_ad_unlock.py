@@ -167,6 +167,11 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(buttons[0].callback_data, "premium_info")
         self.assertEqual(buttons[1].text, "✦ 𝐖𝐀𝐓𝐂𝐇 𝐀𝐃 & 𝐔𝐍𝐋𝐎𝐂𝐊")
         self.assertEqual(buttons[1].callback_data, "ad_unlock_start#-100123#files#FILE_ABC")
+        self.assertLessEqual(len(buttons[1].callback_data.encode("utf-8")), 64)
+        parsed_grp, parsed_pre, parsed_fid = self.mgr.parse_unlock_start_callback(
+            buttons[1].callback_data, default_grp_id=-100123
+        )
+        self.assertEqual((parsed_grp, parsed_pre, parsed_fid), (-100123, "files", "FILE_ABC"))
         self.assertEqual(buttons[2].text, "◁ 𝐁𝐀𝐂𝐊")
         self.assertEqual(buttons[2].callback_data, "start")
 
@@ -537,6 +542,121 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         r_txt = build_ad_verified_ready_text("Pushpa.2.1080p.mkv", 600)
         self.assertIn("𝐀𝐃 𝐕𝐄𝐑𝐈𝐅𝐈𝐂𝐀𝐓𝐈𝐎𝐍 𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃", r_txt)
 
+    # 18. Exact Screenshot Reproduction (14/15 -> 15/15 -> exhausted at 15/15 + 64-byte callback safety + timings)
+    async def test_12_exact_screenshot_reproduction_14_to_15_and_64_byte_callback_safety_and_timings(self):
+        import time
+
+        quota_15_db = _FakeDailyQuotaDB(daily_limit=15)
+        user_id = 6661494944
+        real_grp_id = -1002148604082
+        # Realistic 36-char unpacked Telegram file_id (used in indexed media DB)
+        unpacked_36_file_id = "BQACAgUAAx0CfatN9gACDf5nK1a9b2c3d4e5"
+        # Realistic 62-char full raw Telegram file_id (edge case)
+        long_raw_file_id = "BQACAgUAAxkBAAIB2WcrVrt1234567890abcdefghijklmnopqrstuvwxyzABCD"
+
+        # Step 1: Set test Free user at 14/15
+        quota_15_db.usage[(user_id, quota_15_db.current_date)] = 14
+
+        # Step 2: Request 15th file (Akka The Protectors S01E05) -> confirm normal allowed delivery (15/15)
+        t0 = time.perf_counter()
+        prem_access = await quota_15_db.has_premium_access(user_id)
+        t_prem = (time.perf_counter() - t0) * 1000.0
+        self.assertFalse(prem_access)
+
+        t1 = time.perf_counter()
+        allowed_15, count_15 = quota_15_db.consume_free_file(user_id)
+        t_limit_15 = (time.perf_counter() - t1) * 1000.0
+        self.assertTrue(allowed_15)
+        self.assertEqual(count_15, 15)
+
+        # Step 3 & 4: User is now at 15/15. Request another file -> confirm exhausted (False, 15)
+        t2 = time.perf_counter()
+        allowed_16, count_16 = quota_15_db.consume_free_file(user_id)
+        t_limit_16 = (time.perf_counter() - t2) * 1000.0
+        self.assertFalse(allowed_16)
+        self.assertEqual(count_16, 15)
+
+        # Step 5: Confirm BUY PREMIUM and WATCH AD & UNLOCK appear and callback_data <= 64 bytes (no BUTTON_DATA_INVALID)
+        kb_36 = build_daily_limit_exhausted_keyboard(
+            grp_id=real_grp_id, canonical_file_id=unpacked_36_file_id, pre="files"
+        )
+        btns_36 = [b for row in kb_36.inline_keyboard for b in row]
+        self.assertEqual(btns_36[0].text, "♛ 『 𝐁𝐔𝐘 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 』")
+        self.assertEqual(btns_36[1].text, "✦ 𝐖𝐀𝐓𝐂𝐇 𝐀𝐃 & 𝐔𝐍𝐋𝐎𝐂𝐊")
+        cb_36_bytes = len(btns_36[1].callback_data.encode("utf-8"))
+        self.assertLessEqual(cb_36_bytes, 64, f"Callback exceeded 64 bytes: {cb_36_bytes}")
+        p_grp, p_pre, p_fid = self.mgr.parse_unlock_start_callback(
+            btns_36[1].callback_data, default_grp_id=real_grp_id
+        )
+        self.assertEqual((p_grp, p_pre, p_fid), (real_grp_id, "files", unpacked_36_file_id))
+
+        # Also verify 62-char long raw file_id with custom prefix 'filep' stays <= 64 bytes
+        kb_long = build_daily_limit_exhausted_keyboard(
+            grp_id=real_grp_id, canonical_file_id=long_raw_file_id, pre="filep"
+        )
+        btns_long = [b for row in kb_long.inline_keyboard for b in row]
+        cb_long_bytes = len(btns_long[1].callback_data.encode("utf-8"))
+        self.assertLessEqual(cb_long_bytes, 64, f"Long callback exceeded 64 bytes: {cb_long_bytes}")
+        p_grp_l, p_pre_l, p_fid_l = self.mgr.parse_unlock_start_callback(
+            btns_long[1].callback_data, default_grp_id=0
+        )
+        self.assertEqual((p_grp_l, p_pre_l, p_fid_l), (real_grp_id, "filep", long_raw_file_id))
+
+        # Step 6: Complete verification -> confirm 1 selected file is delivered
+        t3 = time.perf_counter()
+        ok_req, _, req = await self.mgr.create_unlock_request(
+            telegram_user_id=user_id,
+            canonical_file_id=unpacked_36_file_id,
+            grp_id=real_grp_id,
+            file_name="Akka The Protectors S01E06 720p NF WEB DL.mkv",
+            user_db=quota_15_db,
+        )
+        self.assertTrue(ok_req)
+        req_id = req["unlock_request_id"]
+        v_ok, _, _ = await self.mgr.verify_unlock_request(
+            unlock_request_id=req_id,
+            actor_user_id=user_id,
+            verification_attempt_id=req["verification_attempt_id"],
+            user_db=quota_15_db,
+        )
+        self.assertTrue(v_ok)
+        d_ok, _, _ = await self.mgr.begin_file_delivery(
+            unlock_request_id=req_id,
+            actor_user_id=user_id,
+            requested_file_id=unpacked_36_file_id,
+            user_db=quota_15_db,
+        )
+        self.assertTrue(d_ok)
+        await self.mgr.mark_delivery_consumed(req_id, delivery_reference="msg_ep06", user_db=quota_15_db)
+        t_f45_ms = (time.perf_counter() - t3) * 1000.0
+
+        # Step 7: Confirm a second file still requires a new authorization
+        still_exhausted, count_after = quota_15_db.consume_free_file(user_id)
+        self.assertFalse(still_exhausted)
+        self.assertEqual(count_after, 15)
+        d_second_ok, _, _ = await self.mgr.begin_file_delivery(
+            unlock_request_id=req_id,
+            actor_user_id=user_id,
+            requested_file_id="BQACAgUAAx0CfatN9gACDf5nK1a9b2c3d4e6",
+            user_db=quota_15_db,
+        )
+        self.assertFalse(d_second_ok)
+
+        # Step 8: Test Premium delivery separately
+        prem_uid = 7777777777
+        quota_15_db.premium_users.add(prem_uid)
+        for _ in range(20):
+            p_allowed, p_cnt = quota_15_db.consume_free_file(prem_uid)
+            self.assertTrue(p_allowed)
+            self.assertEqual(p_cnt, 0)
+
+        # Ensure all local stage timings are sub-10ms
+        self.assertLess(t_prem, 10.0)
+        self.assertLess(t_limit_15, 10.0)
+        self.assertLess(t_limit_16, 10.0)
+        self.assertLess(t_f45_ms, 50.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

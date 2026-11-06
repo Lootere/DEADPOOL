@@ -352,9 +352,11 @@ def get_search_button_popup_message(user_id):
 
 
 async def is_resolution_locked(value):
+    if not VIP_LOCKED_RESOLUTION_PATTERN.search(str(value or "")):
+        return False
     if not await db.get_setting("RESOLUTION_LOCK", default=True):
         return False
-    return bool(VIP_LOCKED_RESOLUTION_PATTERN.search(str(value or "")))
+    return True
 
 
 async def get_seconds(time_string):
