@@ -61,6 +61,10 @@ class LootereXBot(Client):
                 yield message
                 current += 1
       
+from Lootere.utils.search_ui_style import install_global_client_button_styling
+
+install_global_client_button_styling(LootereXBot)
+
 LootereBot = LootereXBot()
 
 multi_clients = {}

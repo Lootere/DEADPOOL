@@ -36,6 +36,8 @@ from Lootere.utils.file_properties import get_name, get_hash, get_media_file_siz
 from Lootere.utils.search_ui_style import (
     apply_search_keyboard_style,
     edit_styled_reply_markup,
+    invalidate_synced_markup,
+    style_inline_keyboard_markup,
     sync_bot_api_reply_markup,
 )
 from Lootere.utils.smart_search_engine import format_smart_search_file_blocks
@@ -53,30 +55,48 @@ SEARCH_SUGGESTION_TTL = 600
 
 async def _edit_help_page(client, query, text, reply_markup):
     message = query.message
-    if message.photo:
+    chat_id = getattr(getattr(message, "chat", None), "id", None)
+    msg_id = getattr(message, "id", None)
+    style_inline_keyboard_markup(reply_markup)
+    invalidate_synced_markup(chat_id, msg_id)
+    if getattr(message, "photo", None):
         if len(text) <= 1024:
             try:
-                return await message.edit_caption(
+                res = await message.edit_caption(
                     caption=text,
                     reply_markup=reply_markup,
                     parse_mode=enums.ParseMode.HTML,
                 )
+                await sync_bot_api_reply_markup(
+                    chat_id, getattr(res, "id", msg_id), reply_markup
+                )
+                return res
             except MessageNotModified:
+                await sync_bot_api_reply_markup(chat_id, msg_id, reply_markup)
                 return message
         await message.delete()
-        return await client.send_message(
-            chat_id=message.chat.id,
+        res = await client.send_message(
+            chat_id=chat_id,
             text=text,
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
+        await sync_bot_api_reply_markup(
+            chat_id, getattr(res, "id", None), reply_markup
+        )
+        return res
     try:
-        return await message.edit_text(
+        res = await message.edit_text(
             text=text,
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML,
         )
+        await sync_bot_api_reply_markup(
+            chat_id, getattr(res, "id", msg_id), reply_markup
+        )
+        return res
     except MessageNotModified:
+        await sync_bot_api_reply_markup(chat_id, msg_id, reply_markup)
         return message
 
 
@@ -382,24 +402,30 @@ async def stream_download(bot, query):
                         InlineKeyboardButton("📥 ᴅᴏᴡɴʟᴏᴀᴅ 📥", url=non_download),
                         InlineKeyboardButton("🖥️ ꜱᴛʀᴇᴇᴍ 🖥️", url=non_online)]]))
             await query.answer("𝐍𝐨𝐭𝐞:\n𝐓𝐡𝐞 𝐀𝐝𝐬-𝐅𝐫𝐞𝐞 𝐒𝐞𝐫𝐯𝐢𝐜𝐞𝐬 𝐎𝐧𝐥𝐲 𝐅𝐨𝐫 𝐏𝐫𝐞𝐦𝐢𝐮𝐦 𝐔𝐬𝐞𝐫𝐬\n\n‼️Tᴏ ᴋɴᴏᴡ ᴍᴏʀᴇ, ᴄʜᴇᴀᴋ ʙᴇʟᴏᴡ..!!!", show_alert=True)
-            await query.edit_message_reply_markup(
-                reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("⇩ 『 𝑫𝑶𝑾𝑵𝑳𝑶𝑨𝑫 』", url=non_download),
-                        InlineKeyboardButton("🎬 『 𝐒𝐓𝐑𝐄𝐀𝐌 』", url=non_online)
-                    ],[
-                        InlineKeyboardButton('『 𝐇𝐎𝐖 𝐓𝐎 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』', url=STREAM_HTO)]]))
+            await edit_styled_reply_markup(
+                query,
+                [[
+                    InlineKeyboardButton("⇩ 『 𝑫𝑶𝑾𝑵𝑳𝑶𝑨𝑫 』", url=non_download),
+                    InlineKeyboardButton("🎬 『 𝐒𝐓𝐑𝐄𝐀𝐌 』", url=non_online)
+                ],[
+                    InlineKeyboardButton('『 𝐇𝐎𝐖 𝐓𝐎 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 』', url=STREAM_HTO)
+                ]]
+            )
             return
         else:
             await msg.reply_text(text=f"tg://openmessage?user_id={user_id}\n•• ᴜꜱᴇʀɴᴀᴍᴇ : {username} SHORT MODE OFF",
                 reply_markup=InlineKeyboardMarkup([[
                         InlineKeyboardButton("⇩ 『 𝑫𝑶𝑾𝑵𝑳𝑶𝑨𝑫 』", url=download),
                         InlineKeyboardButton("🎬 『 𝐒𝐓𝐑𝐄𝐀𝐌 』", url=online)]]))
-            await query.edit_message_reply_markup(
-                reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("⇩ 『 𝑫𝑶𝑾𝑵𝑳𝑶𝑨𝑫 』", url=download),
-                        InlineKeyboardButton("🎬 『 𝐒𝐓𝐑𝐄𝐀𝐌 』", url=online)
-                    ],[
-                        InlineKeyboardButton('『 ✕ 𝐂𝐋𝐎𝐒𝐄 』', callback_data='close_data')]]))
+            await edit_styled_reply_markup(
+                query,
+                [[
+                    InlineKeyboardButton("⇩ 『 𝑫𝑶𝑾𝑵𝑳𝑶𝑨𝑫 』", url=download),
+                    InlineKeyboardButton("🎬 『 𝐒𝐓𝐑𝐄𝐀𝐌 』", url=online)
+                ],[
+                    InlineKeyboardButton('『 ✕ 𝐂𝐋𝐎𝐒𝐄 』', callback_data='close_data')
+                ]]
+            )
     except Exception as e:
         await query.answer(f'{e}', show_alert=True)             
         
@@ -2267,11 +2293,14 @@ async def cb_handler(client: Client, query: CallbackQuery):
         reply_markup = InlineKeyboardMarkup(buttons)
         plans_text = format_premium_plans(await get_premium_plans())
         if hasattr(query.message, "reply_photo"):
-            await query.message.reply_photo(
+            sent_prem = await query.message.reply_photo(
                 photo=(PREMIUM_PIC),
                 caption=plans_text,
                 reply_markup=reply_markup,
                 parse_mode=enums.ParseMode.HTML
+            )
+            await sync_bot_api_reply_markup(
+                query.message.chat.id, getattr(sent_prem, "id", None), reply_markup
             )
         else:
             await _edit_help_page(client, query, plans_text, reply_markup)
@@ -2290,7 +2319,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         if hasattr(query.message, "reply_photo"):
-            await query.message.reply_photo(QR_CODE, caption=script.QR_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+            sent_qr = await query.message.reply_photo(QR_CODE, caption=script.QR_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+            await sync_bot_api_reply_markup(
+                query.message.chat.id, getattr(sent_qr, "id", None), reply_markup
+            )
         else:
             await _edit_help_page(client, query, script.QR_TXT, reply_markup)
         await query.answer()
@@ -2308,7 +2340,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         if hasattr(query.message, "reply_text"):
-            await query.message.reply_text(script.UPI_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+            sent_upi = await query.message.reply_text(script.UPI_TXT, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+            await sync_bot_api_reply_markup(
+                query.message.chat.id, getattr(sent_upi, "id", None), reply_markup
+            )
         else:
             await _edit_help_page(client, query, script.UPI_TXT, reply_markup)
         await query.answer()
@@ -2485,7 +2520,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         if not req or req.get("status") != "pending":
             return await query.answer("Request is no longer pending.", show_alert=True)
 
-        await query.message.edit_reply_markup(reply_markup=build_rejection_reasons_keyboard(req_id))
+        rej_markup = build_rejection_reasons_keyboard(req_id)
+        invalidate_synced_markup(query.message.chat.id, query.message.id)
+        await query.message.edit_reply_markup(reply_markup=rej_markup)
+        await sync_bot_api_reply_markup(query.message.chat.id, query.message.id, rej_markup)
         await query.answer("Select a rejection reason")
 
     elif query.data.startswith("pay_rejr#"):
@@ -2565,7 +2603,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
 
         _, req_id = query.data.split("#", 1)
         payment_manager.clear_admin_state(admin_id)
-        await query.message.edit_reply_markup(reply_markup=build_admin_review_keyboard(req_id))
+        rev_markup = build_admin_review_keyboard(req_id)
+        invalidate_synced_markup(query.message.chat.id, query.message.id)
+        await query.message.edit_reply_markup(reply_markup=rev_markup)
+        await sync_bot_api_reply_markup(query.message.chat.id, query.message.id, rev_markup)
         await query.answer("Returned to main review actions.")
 
     elif query.data.startswith("ad_unlock_start#"):
@@ -2616,11 +2657,14 @@ async def cb_handler(client: Client, query: CallbackQuery):
         )
         short_url = await get_shortlink(deep_link, grp_id, is_second_shortener, is_third_shortener)
         expiry_secs = await ad_unlock_manager.get_expiry_seconds(user_db=db)
+        verify_kb = build_ad_verification_keyboard(verify_url=short_url, tutorial_url=tutorial)
+        invalidate_synced_markup(query.message.chat.id, query.message.id)
         await query.message.edit_text(
             build_ad_verification_prompt_text(file_obj.file_name, expiry_seconds=expiry_secs),
-            reply_markup=build_ad_verification_keyboard(verify_url=short_url, tutorial_url=tutorial),
+            reply_markup=verify_kb,
             parse_mode=enums.ParseMode.HTML,
         )
+        await sync_bot_api_reply_markup(query.message.chat.id, query.message.id, verify_kb)
         await query.answer("Complete ad verification to unlock this file!")
 
     elif query.data.startswith("ad_deliver#"):
@@ -2836,7 +2880,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     callback_data=f"setgs#auto_delete_back#0#{grp_id}",
                 )
             ])
-            await query.message.edit_reply_markup(InlineKeyboardMarkup(rows))
+            reply_markup = InlineKeyboardMarkup( rows )
+            invalidate_synced_markup(query.message.chat.id, query.message.id)
+            await query.message.edit_reply_markup(reply_markup)
+            await sync_bot_api_reply_markup(query.message.chat.id, query.message.id, reply_markup)
             return await query.answer()
         elif set_type == "auto_delete_time":
             try:
@@ -2919,7 +2966,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 ]
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
+            invalidate_synced_markup(query.message.chat.id, query.message.id)
             await query.message.edit_reply_markup(reply_markup)
+            await sync_bot_api_reply_markup(query.message.chat.id, query.message.id, reply_markup)
     await query.answer(MSG_ALRT)
 
 async def ai_spell_check(chat_id, wrong_name):

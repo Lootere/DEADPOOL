@@ -877,7 +877,7 @@ async def start(client, message):
                         f"\n\n<b>Dᴀɪʟʏ Fɪʟᴇ Lɪᴍɪᴛ: "
                         f"{usage_count}/{limit}</b>"
                     )
-                await msg.edit_caption(f_caption)
+                await msg.edit_caption(f_caption, reply_markup=reply_markup)
                 return
             except Exception as exc:
                 logger.exception(
