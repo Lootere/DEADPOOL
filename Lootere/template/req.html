@@ -11,551 +11,840 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="https://cdn.plyr.io/3.6.9/plyr.css">
-<link rel="stylesheet" href="https://biisal.github.io/Resources/StreamCSS.css">
-<link rel="stylesheet" href="https://biisal.github.io/Resources/playerCss.css">
 
 <style>
 :root {
-    --bg: #080b12;
-    --card: #111827;
-    --accent: #a855f7;
-    --accent2: #ec4899;
-    --text: #f8fafc;
-    --muted: #94a3b8;
-    --border: rgba(255,255,255,.09);
+    --bg:#080b12;
+    --purple:#a855f7;
+    --pink:#ec4899;
+    --text:#f8fafc;
+    --muted:#94a3b8;
+    --border:rgba(255,255,255,.09);
+}
+
+@property --neon-angle {
+    syntax:"<angle>";
+    initial-value:0deg;
+    inherits:false;
 }
 
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
 }
 
-html { scroll-behavior: smooth; }
+html {
+    scroll-behavior:smooth;
+    scroll-padding-top:85px;
+}
 
 body {
-    font-family: 'Inter', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    overflow-x: hidden;
+    width:100%;
+    min-height:100vh;
+    overflow-x:hidden;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
 }
 
 body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -2;
+    content:"";
+    position:fixed;
+    inset:0;
+    z-index:-1;
+    pointer-events:none;
     background:
-        radial-gradient(ellipse at 15% 15%, rgba(124,58,237,.17), transparent 45%),
-        radial-gradient(ellipse at 85% 75%, rgba(236,72,153,.12), transparent 45%),
-        #080b12;
+    radial-gradient(circle at 10% 10%,rgba(147,51,234,.15),transparent 38%),
+    radial-gradient(circle at 90% 70%,rgba(219,39,119,.11),transparent 38%);
 }
 
+/* ANIMATIONS */
+
+@keyframes googleNeon {
+    to {--neon-angle:360deg;}
+}
+
+@keyframes glowPulse {
+    0%,100% {
+        filter:brightness(1);
+    }
+    50% {
+        filter:brightness(1.25);
+    }
+}
+
+@keyframes pulse {
+    50% {opacity:.35;transform:scale(.8);}
+}
+
+@keyframes fadeIn {
+    from {opacity:0;transform:translateY(20px);}
+    to {opacity:1;transform:translateY(0);}
+}
+
+@keyframes glassShine {
+    0% {left:-150%;}
+    100% {left:150%;}
+}
+
+@keyframes ambientMove {
+    from {transform:translate(0,0);}
+    to {transform:translate(40px,60px);}
+}
+
+/* BACKGROUND GLOW */
+
 .ambient {
-    position: fixed;
-    width: 350px;
-    height: 350px;
-    border-radius: 50%;
-    filter: blur(110px);
-    opacity: .17;
-    pointer-events: none;
-    z-index: -1;
-    animation: float 9s ease-in-out infinite alternate;
+    position:fixed;
+    width:300px;
+    height:300px;
+    border-radius:50%;
+    filter:blur(110px);
+    opacity:.16;
+    z-index:-1;
+    pointer-events:none;
+    animation:ambientMove 9s ease-in-out infinite alternate;
 }
 
 .ambient.one {
-    background: #9333ea;
-    top: 10%;
-    left: -180px;
+    background:#9333ea;
+    top:10%;
+    left:-180px;
 }
 
 .ambient.two {
-    background: #db2777;
-    bottom: 0;
-    right: -180px;
-    animation-delay: 2s;
+    background:#ec4899;
+    bottom:0;
+    right:-180px;
 }
 
-@keyframes float {
-    from { transform: translateY(-30px); }
-    to { transform: translateY(50px); }
-}
+/* NAVBAR */
 
 nav {
-    width: 100%;
-    min-height: 75px;
-    padding: 15px 6%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid var(--border);
-    background: rgba(8,11,18,.82);
-    backdrop-filter: blur(20px);
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    position:sticky;
+    top:0;
+    z-index:1000;
+    width:100%;
+    min-height:70px;
+    padding:15px 5%;
+    display:flex !important;
+    justify-content:space-between !important;
+    align-items:center !important;
+    gap:15px;
+    background:rgba(8,11,18,.86);
+    backdrop-filter:blur(22px);
+    -webkit-backdrop-filter:blur(22px);
+    border-bottom:1px solid var(--border);
 }
 
 nav a {
-    color: white;
-    text-decoration: none;
+    text-decoration:none;
+    color:white;
 }
 
 #heading {
-    font-size: 20px;
-    font-weight: 900;
-    letter-spacing: -1px;
+    font-size:21px;
+    font-weight:900;
+    letter-spacing:-1px;
 }
 
-#heading span { color: #c084fc; }
+#heading span {
+    color:#c084fc;
+}
 
 .nryt {
-    display: flex;
-    gap: 28px;
+    display:flex !important;
+    gap:25px;
 }
 
 .nryt a {
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 1.5px;
-    color: #cbd5e1;
-    transition: .3s;
+    color:#cbd5e1;
+    font-size:12px;
+    font-weight:800;
+    letter-spacing:1px;
+    transition:.3s;
 }
 
-.nryt a:hover { color: #c084fc; }
+.nryt a:hover {
+    color:#c084fc;
+}
+
+/* MAIN LAYOUT */
 
 .outer {
-    width: 100%;
-    max-width: 1000px;
-    margin: auto;
-    padding: 35px 20px 60px;
+    display:block !important;
+    width:100% !important;
+    max-width:100% !important;
+    margin:0 auto !important;
+    padding:35px 16px 55px !important;
 }
 
-.inner { width: 100%; }
+.inner {
+    display:block !important;
+    width:100% !important;
+    max-width:850px !important;
+    margin:0 auto !important;
+    padding:0 !important;
+}
 
 .main {
-    width: 100%;
-    animation: appear .8s ease both;
+    display:block !important;
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    margin:0 auto !important;
+    animation:fadeIn .8s ease;
 }
 
-@keyframes appear {
-    from { opacity: 0; transform: translateY(25px); }
-    to { opacity: 1; transform: translateY(0); }
+.abt {
+    display:block !important;
+    float:none !important;
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    margin:45px auto 0 !important;
 }
 
-.section-heading {
-    text-align: center;
-    margin: 10px 0 30px;
+.about {
+    display:block !important;
+    width:100% !important;
+    max-width:100% !important;
+    margin:0 auto !important;
 }
 
-.section-heading .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 15px;
-    border: 1px solid rgba(192,132,252,.3);
-    border-radius: 30px;
-    color: #d8b4fe;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 2px;
-    background: rgba(168,85,247,.08);
+/* HERO */
+
+.hero {
+    text-align:center;
+    margin:10px auto 32px;
 }
 
-.live-dot {
-    width: 7px;
-    height: 7px;
-    background: #4ade80;
-    border-radius: 50%;
-    box-shadow: 0 0 10px #4ade80;
+.hero-tag {
+    display:inline-flex;
+    align-items:center;
+    gap:9px;
+    padding:10px 19px;
+    border-radius:50px;
+    border:1px solid transparent;
+    background:
+        linear-gradient(#11101b,#11101b) padding-box,
+        conic-gradient(from var(--neon-angle),#4285F4,#EA4335,#FBBC05,#34A853,#4285F4) border-box;
+    color:#d8b4fe;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:2px;
+    animation:googleNeon 6s linear infinite;
+    box-shadow:0 0 20px rgba(168,85,247,.12);
 }
 
-.section-heading h1 {
-    font-size: clamp(25px, 5vw, 43px);
-    font-weight: 900;
-    letter-spacing: -1.8px;
-    margin: 18px 0 9px;
+.hero-tag i {
+    color:#4ade80;
+    font-size:9px;
+    animation:pulse 1.5s infinite;
 }
 
-.section-heading h1 span {
-    background: linear-gradient(100deg,#c084fc,#f472b6);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+.hero h1 {
+    font-size:clamp(28px,6vw,48px);
+    font-weight:900;
+    letter-spacing:-1.5px;
+    margin:22px 0 12px;
+    line-height:1.2;
 }
 
-.section-heading p {
-    color: var(--muted);
-    font-size: 13px;
+.gradient {
+    background:linear-gradient(100deg,#4285F4,#c084fc,#f472b6);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
 }
 
-.video-card {
-    padding: 12px;
-    border-radius: 22px;
-    border: 1px solid rgba(255,255,255,.12);
-    background: linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.02));
-    box-shadow: 0 25px 80px rgba(0,0,0,.4);
-    overflow: hidden;
-    position: relative;
+.hero p {
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
 }
 
-.video-card::before {
-    content: "";
-    position: absolute;
-    width: 250px;
-    height: 2px;
-    top: 0;
-    left: 25%;
-    background: linear-gradient(90deg,transparent,#c084fc,transparent);
+/* VIDEO PLAYER */
+
+.video-wrapper {
+    width:100%;
+    max-width:850px;
+    margin:0 auto;
+    padding:9px;
+    border:2px solid transparent;
+    border-radius:20px;
+    position:relative;
+    isolation:isolate;
+
+    background:
+        linear-gradient(#080b12,#080b12) padding-box,
+        conic-gradient(
+            from var(--neon-angle),
+            #4285F4,
+            #EA4335,
+            #FBBC05,
+            #34A853,
+            #4285F4
+        ) border-box;
+
+    animation:
+        googleNeon 5s linear infinite,
+        glowPulse 3s ease-in-out infinite;
+
+    box-shadow:
+        0 0 18px rgba(66,133,244,.12),
+        0 15px 50px rgba(0,0,0,.4);
 }
 
-.player {
-    width: 100%;
-    display: block;
-    background: #000;
-    aspect-ratio: 16/9;
-    border-radius: 14px;
-    object-fit: contain;
+.video-inner {
+    width:100%;
+    overflow:hidden;
+    background:#000;
+    border-radius:13px;
+    position:relative;
 }
 
-.plyr {
-    border-radius: 14px;
-    --plyr-color-main: #a855f7;
+#player {
+    display:block !important;
+    width:100% !important;
+    max-width:100% !important;
+    height:auto !important;
+    aspect-ratio:16/9;
+    object-fit:contain;
+    background:#000;
+    border-radius:13px;
 }
+
+/* FILE INFORMATION */
 
 .file-name {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-top: 22px;
-    padding: 19px;
-    background: rgba(255,255,255,.045);
-    border: 1px solid var(--border);
-    border-radius: 15px;
-    min-width: 0;
+    display:flex;
+    align-items:center;
+    gap:15px;
+    width:100%;
+    min-width:0;
+    margin:22px auto 0;
+    padding:19px;
+    border:1px solid rgba(255,255,255,.13);
+    border-radius:17px;
+
+    background:rgba(255,255,255,.045);
+    backdrop-filter:blur(22px);
+    -webkit-backdrop-filter:blur(22px);
+
+    box-shadow:
+        0 8px 35px rgba(0,0,0,.2),
+        inset 0 1px 0 rgba(255,255,255,.05);
+
+    transition:.3s;
 }
 
 .file-icon {
-    flex-shrink: 0;
-    width: 45px;
-    height: 45px;
-    display: grid;
-    place-items: center;
-    background: linear-gradient(135deg,#9333ea,#db2777);
-    border-radius: 13px;
-    font-size: 18px;
+    width:48px;
+    height:48px;
+    flex-shrink:0;
+    display:grid;
+    place-items:center;
+    border-radius:14px;
+    background:linear-gradient(135deg,#9333ea,#db2777);
+    font-size:21px;
+    box-shadow:0 0 20px rgba(168,85,247,.3);
 }
 
 .file-info {
-    min-width: 0;
-    flex: 1;
+    flex:1;
+    min-width:0;
 }
 
 .file-info small {
-    color: var(--muted);
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    font-weight: 800;
-    display: block;
-    margin-bottom: 7px;
+    display:block;
+    color:var(--muted);
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:2px;
+    margin-bottom:7px;
 }
 
 .file-info p {
-    font-size: 14px;
-    font-weight: 700;
-    line-height: 1.5;
-    overflow-wrap: anywhere;
+    color:white;
+    font-size:14px;
+    font-weight:700;
+    line-height:1.7;
+    overflow-wrap:anywhere;
+    word-break:break-word;
 }
 
-.player-section { margin-top: 32px; }
+/* PLAYER SECTION */
 
-.section-title {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    margin-bottom: 17px;
+.player-section {
+    width:100%;
+    margin-top:38px;
 }
 
-.section-title .title-icon {
-    width: 38px;
-    height: 38px;
-    display: grid;
-    place-items: center;
-    border-radius: 11px;
-    background: rgba(168,85,247,.13);
-    color: #c084fc;
+.section-heading {
+    display:flex;
+    align-items:center;
+    gap:13px;
+    margin-bottom:20px;
 }
 
-.section-title h2 {
-    font-size: 17px;
-    font-weight: 800;
+.heading-icon {
+    width:45px;
+    height:45px;
+    flex-shrink:0;
+    display:grid;
+    place-items:center;
+    border-radius:14px;
+    background:rgba(168,85,247,.14);
+    color:#c084fc;
+    font-size:19px;
 }
 
-.section-title p {
-    color: var(--muted);
-    font-size: 11px;
-    margin-top: 4px;
+.section-heading h2 {
+    font-size:19px;
+    font-weight:900;
 }
+
+.section-heading p {
+    color:var(--muted);
+    font-size:11px;
+    line-height:1.5;
+    margin-top:5px;
+}
+
+/* GOOGLE NEON PLAYER BUTTONS */
 
 .downloadBtn {
-    display: grid;
-    grid-template-columns: repeat(2,minmax(0,1fr));
-    gap: 13px;
+    display:grid !important;
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    width:100% !important;
+    gap:13px !important;
 }
 
 .downloadBtn button {
-    width: 100%;
-    min-height: 83px;
-    padding: 15px;
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    background: linear-gradient(135deg,rgba(255,255,255,.075),rgba(255,255,255,.025));
-    color: white;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    text-align: left;
-    font-family: inherit;
-    cursor: pointer;
-    transition: transform .25s,border-color .25s,background .25s,box-shadow .25s;
-    position: relative;
-    overflow: hidden;
+    width:100% !important;
+    min-width:0 !important;
+    min-height:85px;
+
+    display:flex !important;
+    align-items:center !important;
+    justify-content:flex-start !important;
+    gap:13px !important;
+
+    padding:14px !important;
+
+    border:1.5px solid transparent !important;
+    border-radius:16px !important;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(25,32,46,.94),
+            rgba(12,17,28,.94)
+        ) padding-box,
+
+        conic-gradient(
+            from var(--neon-angle),
+            #4285F4,
+            #EA4335,
+            #FBBC05,
+            #34A853,
+            #4285F4
+        ) border-box !important;
+
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+
+    color:white !important;
+    font-family:inherit !important;
+    font-size:inherit !important;
+    font-weight:inherit !important;
+    text-align:left !important;
+
+    cursor:pointer;
+    position:relative;
+    isolation:isolate;
+    overflow:hidden;
+
+    animation:googleNeon 7s linear infinite;
+
+    box-shadow:
+        0 5px 22px rgba(0,0,0,.22),
+        inset 0 1px 0 rgba(255,255,255,.04);
+
+    transition:transform .3s,box-shadow .3s;
 }
+
+/* MOVING LIGHT REFLECTION */
 
 .downloadBtn button::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -120%;
-    height: 100%;
-    width: 60%;
-    background: linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);
-    transform: skewX(-20deg);
-    transition: .6s;
-}
+    content:"";
+    position:absolute;
+    top:0;
+    left:-150%;
+    width:65%;
+    height:100%;
+    z-index:-1;
+    pointer-events:none;
 
-.downloadBtn button:hover::after { left: 150%; }
+    background:linear-gradient(
+        110deg,
+        transparent,
+        rgba(255,255,255,.12),
+        transparent
+    );
+
+    transform:skewX(-20deg);
+    animation:glassShine 5s ease-in-out infinite;
+}
 
 .downloadBtn button:hover {
-    transform: translateY(-4px);
-    border-color: rgba(192,132,252,.6);
-    background: rgba(168,85,247,.11);
-    box-shadow: 0 12px 30px rgba(147,51,234,.12);
+    transform:translateY(-4px) scale(1.01);
+
+    box-shadow:
+        0 0 12px rgba(66,133,244,.25),
+        0 0 22px rgba(234,67,53,.15),
+        0 10px 30px rgba(168,85,247,.2);
 }
 
-.downloadBtn button:active { transform: scale(.97); }
-
-.downloadBtn img {
-    width: 43px;
-    height: 43px;
-    object-fit: contain;
-    border-radius: 10px;
-    flex-shrink: 0;
+.downloadBtn button:active {
+    transform:scale(.97);
 }
 
-.btn-text { min-width: 0; }
+.downloadBtn button img {
+    display:block !important;
+    width:43px !important;
+    height:43px !important;
+    max-width:43px !important;
+    flex:0 0 43px;
+    object-fit:contain;
+    border-radius:10px;
+    position:relative;
+    z-index:1;
+}
+
+.btn-text {
+    min-width:0;
+    flex:1;
+    position:relative;
+    z-index:1;
+}
 
 .btn-text strong {
-    display: block;
-    font-size: 13px;
-    font-weight: 800;
-    line-height: 1.5;
+    display:block;
+    font-size:12px;
+    font-weight:900;
+    line-height:1.5;
+    overflow-wrap:anywhere;
 }
 
 .btn-text small {
-    display: block;
-    margin-top: 4px;
-    color: var(--muted);
-    font-size: 10px;
+    display:block;
+    color:var(--muted);
+    font-size:10px;
+    margin-top:5px;
+    line-height:1.4;
 }
 
-.downloadBtn .download-main {
-    grid-column: 1/-1;
-    background: linear-gradient(110deg,#7c3aed,#a855f7,#db2777);
-    border: none;
-    justify-content: center;
-    min-height: 64px;
+/* DOWNLOAD BUTTON */
+
+.downloadBtn button.download-main {
+    grid-column:1/-1;
+    min-height:65px;
+    justify-content:center !important;
+
+    background:
+        linear-gradient(110deg,#401b78,#6d28a8,#831c63) padding-box,
+        conic-gradient(
+            from var(--neon-angle),
+            #4285F4,
+            #EA4335,
+            #FBBC05,
+            #34A853,
+            #4285F4
+        ) border-box !important;
+
+    animation:googleNeon 5s linear infinite;
 }
 
 .download-main img {
-    width: 28px;
-    height: 28px;
+    width:30px !important;
+    height:30px !important;
+    flex-basis:30px !important;
 }
 
-.download-main .btn-text strong { font-size: 14px; }
-
-.download-main .btn-text small { color: #f3e8ff; }
-
-.status-note {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    margin-top: 20px;
-    padding: 13px 15px;
-    border: 1px solid rgba(74,222,128,.15);
-    background: rgba(74,222,128,.045);
-    border-radius: 12px;
-    color: #a7f3d0;
-    font-size: 11px;
-    line-height: 1.6;
+.download-main .btn-text small {
+    color:#f3e8ff;
 }
 
-.status-note i { color: #4ade80; }
-
-.about {
-    margin-top: 70px;
-    padding: 35px 25px;
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    background: rgba(255,255,255,.025);
-    text-align: center;
+.download-main .btn-text strong {
+    font-size:14px;
 }
 
-.about h2 {
-    font-size: 22px;
-    font-weight: 900;
-    margin-bottom: 15px;
+/* INFORMATION */
+
+.player-info {
+    margin-top:18px;
+    padding:14px;
+    display:flex;
+    gap:10px;
+    align-items:center;
+    border-radius:12px;
+
+    border:1px solid rgba(74,222,128,.2);
+    background:rgba(74,222,128,.045);
+
+    backdrop-filter:blur(15px);
+    -webkit-backdrop-filter:blur(15px);
+
+    color:#a7f3d0;
+    font-size:11px;
+    line-height:1.6;
 }
 
-.about h2 span { color: #c084fc; }
-
-.about p {
-    color: var(--muted);
-    font-size: 13px;
-    line-height: 2;
-    max-width: 600px;
-    margin: auto;
+.player-info i {
+    color:#4ade80;
 }
 
-.contact-link {
-    display: inline-flex;
-    margin-top: 22px;
-    padding: 13px 25px;
-    border-radius: 12px;
-    background: linear-gradient(110deg,#7c3aed,#db2777);
-    color: white;
-    text-decoration: none;
-    font-weight: 800;
-    font-size: 12px;
-    transition: .3s;
+/* ABOUT GLASS CARDS */
+
+.abt-sec {
+    display:block !important;
+    width:100% !important;
+    min-width:0 !important;
+
+    padding:30px 22px !important;
+    margin:0 auto 20px !important;
+
+    border:1px solid transparent !important;
+    border-radius:19px;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(255,255,255,.065),
+            rgba(255,255,255,.025)
+        ) padding-box,
+        conic-gradient(
+            from var(--neon-angle),
+            rgba(66,133,244,.65),
+            rgba(234,67,53,.45),
+            rgba(251,188,5,.45),
+            rgba(52,168,83,.45),
+            rgba(66,133,244,.65)
+        ) border-box;
+
+    backdrop-filter:blur(22px);
+    -webkit-backdrop-filter:blur(22px);
+
+    box-shadow:
+        0 12px 35px rgba(0,0,0,.2),
+        inset 0 1px 0 rgba(255,255,255,.05);
+
+    animation:googleNeon 10s linear infinite;
+    text-align:center;
 }
 
-.contact-link:hover { transform: translateY(-3px); }
+.abt-sec h1 {
+    font-size:22px;
+    font-weight:900;
+    line-height:1.4;
+    margin-bottom:15px;
+}
+
+.abt-sec h1 span {
+    color:#c084fc;
+}
+
+.abt-sec p {
+    font-size:13px;
+    color:var(--muted);
+    line-height:2;
+    overflow-wrap:anywhere;
+}
+
+/* CONTACT */
+
+.links button {
+    margin-top:18px;
+    padding:13px 27px;
+    border:1px solid transparent;
+    border-radius:12px;
+
+    background:
+        linear-gradient(110deg,#7c3aed,#db2777) padding-box,
+        conic-gradient(from var(--neon-angle),#4285F4,#EA4335,#FBBC05,#34A853,#4285F4) border-box;
+
+    color:white;
+    font-weight:800;
+    cursor:pointer;
+    animation:googleNeon 6s linear infinite;
+    transition:.3s;
+}
+
+.links button:hover {
+    transform:translateY(-3px);
+    box-shadow:0 0 22px rgba(168,85,247,.3);
+}
+
+.links a {
+    text-decoration:none;
+}
+
+/* FOOTER */
 
 footer {
-    text-align: center;
-    padding: 28px 20px;
-    border-top: 1px solid var(--border);
-    background: rgba(255,255,255,.015);
+    display:block !important;
+    width:100% !important;
+    padding:28px 17px;
+    text-align:center;
+    border-top:1px solid var(--border);
+    background:rgba(10,14,22,.85);
+    backdrop-filter:blur(15px);
+    -webkit-backdrop-filter:blur(15px);
 }
 
-footer p {
-    max-width: 700px;
-    margin: auto;
-    font-size: 10px;
-    color: #64748b;
-    line-height: 1.9;
+.last-text {
+    max-width:700px;
+    margin:auto;
+}
+
+.last-text p {
+    font-size:11px;
+    line-height:1.9;
+    color:#8491a5;
 }
 
 .copyright {
-    margin-top: 20px;
-    color: #94a3b8;
-    font-size: 11px;
+    margin-top:20px;
+    color:#94a3b8;
+    font-size:11px;
 }
 
 .copyright a {
-    color: #c084fc;
-    text-decoration: none;
+    color:#c084fc;
+    text-decoration:none;
 }
 
 .icons {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-top: 17px;
+    display:flex;
+    justify-content:center;
+    gap:22px;
+    margin-top:17px;
 }
 
 .icons a {
-    color: #c084fc;
-    font-size: 20px;
-    transition: .3s;
+    color:#c084fc;
+    font-size:21px;
+    transition:.3s;
 }
 
 .icons a:hover {
-    color: #f472b6;
-    transform: translateY(-4px);
+    color:#f472b6;
+    transform:translateY(-3px);
 }
 
-.toast {
-    position: fixed;
-    bottom: 25px;
-    left: 50%;
-    transform: translate(-50%,30px);
-    opacity: 0;
-    visibility: hidden;
-    z-index: 9999;
-    padding: 14px 20px;
-    background: #1e293b;
-    border: 1px solid rgba(192,132,252,.4);
-    border-radius: 12px;
-    color: white;
-    font-size: 12px;
-    font-weight: 600;
-    box-shadow: 0 10px 35px rgba(0,0,0,.4);
-    transition: .3s;
-    text-align: center;
-    width: max-content;
-    max-width: 90%;
-}
-
-.toast.show {
-    opacity: 1;
-    visibility: visible;
-    transform: translate(-50%,0);
-}
+/* MOBILE RESPONSIVE */
 
 @media(max-width:600px) {
+
     nav {
-        min-height: 65px;
-        padding: 12px 17px;
+        min-height:62px;
+        padding:12px 16px;
     }
 
-    #heading { font-size: 17px; }
+    #heading {
+        font-size:18px;
+    }
 
-    .nryt { gap: 16px; }
+    .nryt {
+        gap:17px;
+    }
 
     .nryt a {
-        font-size: 10px;
-        letter-spacing: 1px;
+        font-size:10px;
     }
 
-    .outer { padding: 24px 13px 45px; }
-
-    .section-heading h1 { letter-spacing: -1px; }
-
-    .video-card {
-        padding: 8px;
-        border-radius: 17px;
+    .outer {
+        padding:26px 13px 40px !important;
     }
 
-    .player { border-radius: 11px; }
+    .inner,
+    .main,
+    .abt,
+    .about {
+        width:100% !important;
+        max-width:100% !important;
+        min-width:0 !important;
+    }
 
-    .downloadBtn { grid-template-columns: 1fr; }
+    .hero {
+        margin-bottom:25px;
+    }
 
-    .downloadBtn button { min-height: 76px; }
+    .hero h1 {
+        font-size:32px;
+    }
 
-    .file-name { padding: 15px; }
+    .hero p {
+        font-size:13px;
+    }
 
-    .about { padding: 28px 17px; }
+    .video-wrapper {
+        padding:6px;
+        border-radius:15px;
+    }
+
+    .video-inner,
+    #player {
+        border-radius:10px;
+    }
+
+    .file-name {
+        padding:14px;
+    }
+
+    .file-info p {
+        font-size:13px;
+    }
+
+    .downloadBtn {
+        grid-template-columns:1fr !important;
+        gap:12px !important;
+    }
+
+    .downloadBtn button {
+        min-height:74px;
+        padding:13px !important;
+        backdrop-filter:blur(12px);
+        -webkit-backdrop-filter:blur(12px);
+    }
+
+    .downloadBtn button img {
+        width:40px !important;
+        height:40px !important;
+        flex-basis:40px;
+    }
+
+    .abt-sec {
+        padding:27px 17px !important;
+    }
+
+    .abt-sec h1 {
+        font-size:20px;
+    }
 }
 
+/* REDUCED MOTION */
+
 @media(prefers-reduced-motion:reduce) {
-    *,*::before,*::after {
-        animation-duration: .01ms !important;
-        transition-duration: .01ms !important;
-        scroll-behavior: auto !important;
+    *,
+    *::before,
+    *::after {
+        animation:none !important;
+        transition:none !important;
+        scroll-behavior:auto !important;
     }
 }
 </style>
@@ -566,305 +855,261 @@ footer p {
 <div class="ambient one"></div>
 <div class="ambient two"></div>
 
+<!-- NAVBAR -->
+
 <nav>
     <div class="nleft">
         <a href="https://t.me/Looteredev">
             <h3 id="heading">Lootere<span>-DEV</span></h3>
         </a>
     </div>
+
     <div class="nryt">
         <a href="#main">HOME</a>
         <a href="#sec1">ABOUT</a>
     </div>
 </nav>
 
+<!-- MAIN CONTENT -->
+
 <div class="outer">
 <div class="inner">
 
-<main class="main" id="main">
+    <main class="main" id="main">
 
-    <div class="section-heading">
-        <div class="tag">
-            <span class="live-dot"></span>
-            PREMIUM STREAMING
-        </div>
-        <h1>YOUR MOVIE <span>AWAITS.</span></h1>
-        <p>Choose your preferred player and enjoy the experience.</p>
-    </div>
+        <!-- HERO -->
 
-    <div class="video-card">
+        <div class="hero">
 
-        <video
-            id="player"
-            class="player"
-            src="{{file_url}}"
-            type="video/mp4"
-            playsinline
-            controls
-            preload="metadata"
-            width="100%">
-        </video>
-
-    </div>
-
-    <div class="file-name">
-        <div class="file-icon">
-            <i class="fa-solid fa-film"></i>
-        </div>
-        <div class="file-info">
-            <small>NOW STREAMING</small>
-            <p id="myDiv">{{file_name}}</p>
-        </div>
-    </div>
-
-    <section class="player-section">
-
-        <div class="section-title">
-            <div class="title-icon">
-                <i class="fa-solid fa-play"></i>
+            <div class="hero-tag">
+                <i class="fa-solid fa-circle"></i>
+                PREMIUM STREAMING
             </div>
-            <div>
-                <h2>Choose Your Player</h2>
-                <p>Select an external player to watch your video</p>
+
+            <h1>
+                YOUR MOVIE<br>
+                <span class="gradient">AWAITS.</span>
+            </h1>
+
+            <p>Choose your preferred player and enjoy the experience.</p>
+
+        </div>
+
+        <!-- VIDEO PLAYER -->
+
+        <div class="video-wrapper">
+            <div class="video-inner">
+
+                <video
+                    id="player"
+                    class="player"
+                    src="{{file_url}}"
+                    type="video/mp4"
+                    playsinline
+                    controls
+                    preload="metadata"
+                    width="100%">
+                </video>
+
             </div>
         </div>
 
-        <div class="downloadBtn">
+        <!-- FILE NAME -->
 
-            <button type="button" onclick="runPlayer('vlc_player')">
-                <img src="https://i.postimg.cc/15TQ4y7B/vlc.png" alt="VLC">
-                <span class="btn-text">
-                    <strong>WATCH IN VLC</strong>
-                    <small>VLC Media Player</small>
-                </span>
-            </button>
+        <div class="file-name">
 
-            <button type="button" onclick="runPlayer('mx_player')">
-                <img src="https://i.postimg.cc/sx4Msv4T/mx.png" alt="MX Player">
-                <span class="btn-text">
-                    <strong>WATCH IN MX PLAYER</strong>
-                    <small>MX Video Player</small>
-                </span>
-            </button>
+            <div class="file-icon">
+                <i class="fa-solid fa-film"></i>
+            </div>
 
-            <button type="button" onclick="runPlayer('playit_player')">
-                <img src="https://i.postimg.cc/VNCwVGjz/IMG-20240408-140543.jpg" alt="PLAYit">
-                <span class="btn-text">
-                    <strong>WATCH IN PLAYit</strong>
-                    <small>PLAYit Video Player</small>
-                </span>
-            </button>
-
-            <button type="button" onclick="runPlayer('km_player')">
-                <img src="https://i.postimg.cc/wT9tFQ9Z/km.png" alt="KM Player">
-                <span class="btn-text">
-                    <strong>WATCH IN KM PLAYER</strong>
-                    <small>KM Media Player</small>
-                </span>
-            </button>
-
-            <button type="button" onclick="runPlayer('s_player')">
-                <img src="https://i.postimg.cc/XYJr6NGg/s.png" alt="S Player">
-                <span class="btn-text">
-                    <strong>WATCH IN S PLAYER</strong>
-                    <small>S Video Player</small>
-                </span>
-            </button>
-
-            <button type="button" onclick="runPlayer('hd_player')">
-                <img src="https://i.postimg.cc/rFT43LNh/hd.png" alt="HD Player">
-                <span class="btn-text">
-                    <strong>WATCH IN HD PLAYER</strong>
-                    <small>4K Video Playback</small>
-                </span>
-            </button>
-
-            <button class="download-main" type="button" onclick="runDownload()">
-                <img src="https://i.postimg.cc/Zncc9YLq/Pngtree-download-icon-3581467.png" alt="Download">
-                <span class="btn-text">
-                    <strong>DOWNLOAD VIDEO</strong>
-                    <small>Save your video</small>
-                </span>
-                <i class="fa-solid fa-arrow-down"></i>
-            </button>
+            <div class="file-info">
+                <small>NOW STREAMING</small>
+                <p id="myDiv">{{file_name}}</p>
+            </div>
 
         </div>
 
-        <div class="status-note">
-            <i class="fa-solid fa-circle-check"></i>
-            For external playback, the selected player app must be installed on your device.
+        <!-- PLAYER OPTIONS -->
+
+        <section class="player-section">
+
+            <div class="section-heading">
+
+                <div class="heading-icon">
+                    <i class="fa-solid fa-play"></i>
+                </div>
+
+                <div>
+                    <h2>Choose Your Player</h2>
+                    <p>Select an external player to watch your video.</p>
+                </div>
+
+            </div>
+
+            <div class="downloadBtn">
+
+                <button type="button" onclick="vlc_player()">
+                    <img src="https://i.postimg.cc/15TQ4y7B/vlc.png" alt="VLC">
+                    <span class="btn-text">
+                        <strong>WATCH IN VLC PLAYER</strong>
+                        <small>Open with VLC</small>
+                    </span>
+                </button>
+
+                <button type="button" onclick="mx_player()">
+                    <img src="https://i.postimg.cc/sx4Msv4T/mx.png" alt="MX Player">
+                    <span class="btn-text">
+                        <strong>WATCH IN MX PLAYER</strong>
+                        <small>Open with MX Player</small>
+                    </span>
+                </button>
+
+                <button type="button" onclick="playit_player()">
+                    <img src="https://i.postimg.cc/VNCwVGjz/IMG-20240408-140543.jpg" alt="PLAYit">
+                    <span class="btn-text">
+                        <strong>WATCH IN PLAYit PLAYER</strong>
+                        <small>Open with PLAYit</small>
+                    </span>
+                </button>
+
+                <button type="button" onclick="km_player()">
+                    <img src="https://i.postimg.cc/wT9tFQ9Z/km.png" alt="KM Player">
+                    <span class="btn-text">
+                        <strong>WATCH IN KM PLAYER</strong>
+                        <small>Open with KM Player</small>
+                    </span>
+                </button>
+
+                <button type="button" onclick="s_player()">
+                    <img src="https://i.postimg.cc/XYJr6NGg/s.png" alt="S Player">
+                    <span class="btn-text">
+                        <strong>WATCH IN S PLAYER</strong>
+                        <small>Open with S Player</small>
+                    </span>
+                </button>
+
+                <button type="button" onclick="hd_player()">
+                    <img src="https://i.postimg.cc/rFT43LNh/hd.png" alt="HD Player">
+                    <span class="btn-text">
+                        <strong>WATCH IN HD PLAYER</strong>
+                        <small>4K Video Player</small>
+                    </span>
+                </button>
+
+                <!-- DOWNLOAD -->
+
+                <button class="download-main" type="button" onclick="bisalDownload()">
+
+                    <img src="https://i.postimg.cc/Zncc9YLq/Pngtree-download-icon-3581467.png" alt="Download">
+
+                    <span class="btn-text">
+                        <strong>DOWNLOAD VIDEO</strong>
+                        <small>Save your video</small>
+                    </span>
+
+                    <i class="fa-solid fa-download"></i>
+
+                </button>
+
+            </div>
+
+            <div class="player-info">
+                <i class="fa-solid fa-circle-info"></i>
+                <span>External player apps must be installed on your device to use their respective buttons.</span>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- ABOUT SECTION -->
+
+    <div class="abt">
+        <div class="about">
+
+            <div class="abt-sec" id="sec1">
+
+                <h1>WELCOME TO OUR <span>STREAMING</span> PAGE</h1>
+
+                <p>
+                    We're thrilled to have you here.
+                    Get ready for an amazing experience filled with
+                    entertainment, fun, and surprises.
+                    Grab your snacks, sit back, and enjoy the show!
+                </p>
+
+            </div>
+
+            <div class="abt-sec" id="sec4">
+
+                <h1>NEED <span>SUPPORT?</span></h1>
+
+                <p>
+                    Contact us through Telegram for support
+                    or to report any issues.
+                </p>
+
+                <div class="links contact">
+                    <a href="https://t.me/Looteredev">
+                        <button type="button">
+                            <i class="fa-brands fa-telegram"></i>
+                            CONTACT SUPPORT
+                        </button>
+                    </a>
+                </div>
+
+            </div>
+
         </div>
-
-    </section>
-
-</main>
-
-<section class="about" id="sec1">
-    <h2>WELCOME TO OUR <span>STREAMING</span> PAGE</h2>
-    <p>
-        We're thrilled to have you here. Get ready for an amazing
-        experience filled with entertainment and fun.
-        Choose your favourite video player, sit back and enjoy the show!
-    </p>
-
-    <a class="contact-link" href="https://t.me/Looteredev">
-        <i class="fa-brands fa-telegram"></i>&nbsp; CONTACT SUPPORT
-    </a>
-</section>
+    </div>
 
 </div>
 </div>
+
+<!-- FOOTER -->
 
 <footer>
-    <p>
-        Welcome to our online streaming platform! Our website allows users
-        to generate streamable links for various files using Telegram bots.
-        Please respect copyright laws and our community guidelines.
-        Enjoy easy, hassle-free file streaming.
-    </p>
+
+    <div class="last-text">
+        <p>
+            Welcome to our online streaming platform! Our website allows
+            users to generate streamable links for various files using
+            Telegram bots. Please note that we are not responsible for
+            the content shared or streamed through our service.
+            Users are encouraged to respect copyright laws and adhere
+            to our community guidelines. Enjoy easy, hassle-free file streaming.
+        </p>
+    </div>
 
     <div class="copyright">
-        Copyright © 2026
-        <a href="https://t.me/Looteredev">Lootere-DEVELOPER</a>.
-        All Rights Reserved.
+
+        <h5>
+            Copyright © 2026
+            <a href="https://t.me/Looteredev">
+                <span>Lootere-DEVELOPER</span>
+            </a>.
+            All Rights Reserved.
+        </h5>
 
         <div class="icons">
-            <a href="https://github.com/Looteredeveloper" aria-label="GitHub">
+
+            <a href="https://github.com/Looteredeveloper">
                 <i class="fa-brands fa-github"></i>
             </a>
-            <a href="https://t.me/Looteredev" aria-label="Telegram">
+
+            <a href="https://t.me/Looteredev">
                 <i class="fa-brands fa-telegram"></i>
             </a>
+
         </div>
+
     </div>
+
 </footer>
 
-<div class="toast" id="toast"></div>
+<!-- ORIGINAL PLAYER SCRIPTS: DO NOT REMOVE -->
 
-<script src="https://cdn.plyr.io/3.6.9/plyr.js"></script>
-
-<script>
-/* Notification system */
-let toastTimer;
-
-function showToast(message) {
-    const toast = document.getElementById('toast');
-
-    toast.textContent = message;
-    toast.classList.add('show');
-
-    clearTimeout(toastTimer);
-
-    toastTimer = setTimeout(() => {
-        toast.classList.remove('show');
-    }, 3000);
-}
-
-/* External player integration */
-function runPlayer(functionName) {
-
-    if (typeof window[functionName] === 'function') {
-        try {
-            window[functionName]();
-        } catch (error) {
-            console.error('Player error:', error);
-            showToast('Unable to open player. Please try again.');
-        }
-    } else {
-        showToast('Player service is not available. Please reload the page.');
-    }
-}
-
-/* Download integration */
-function runDownload() {
-
-    if (typeof window.bisalDownload === 'function') {
-        try {
-            window.bisalDownload();
-        } catch (error) {
-            console.error('Download error:', error);
-            showToast('Download could not be started.');
-        }
-    } else {
-        const video = document.getElementById('player');
-
-        if (video && video.currentSrc) {
-            const link = document.createElement('a');
-            link.href = video.currentSrc;
-            link.download = document.getElementById('myDiv').textContent.trim() || 'video';
-            link.rel = 'noopener';
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-        } else {
-            showToast('Video URL is not available.');
-        }
-    }
-}
-
-/* Video player initialization */
-document.addEventListener('DOMContentLoaded', function() {
-
-    const video = document.getElementById('player');
-
-    if (video && typeof Plyr !== 'undefined') {
-        try {
-            new Plyr(video, {
-                controls: [
-                    'play-large',
-                    'play',
-                    'progress',
-                    'current-time',
-                    'duration',
-                    'mute',
-                    'volume',
-                    'settings',
-                    'pip',
-                    'fullscreen'
-                ],
-                settings: ['quality', 'speed'],
-                speed: {
-                    selected: 1,
-                    options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
-                },
-                keyboard: {
-                    focused: true,
-                    global: false
-                }
-            });
-        } catch (error) {
-            console.warn('Plyr initialization skipped:', error);
-        }
-    }
-
-    if (video) {
-        video.addEventListener('error', function() {
-            showToast('Video could not be loaded. Check the video link.');
-        });
-    }
-
-});
-
-/* Smooth navigation */
-document.querySelectorAll('nav a[href^="#"]').forEach(link => {
-    link.addEventListener('click', function(event) {
-        const target = document.querySelector(this.getAttribute('href'));
-
-        if (target) {
-            event.preventDefault();
-            target.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
-        }
-    });
-});
-</script>
-
-<!-- Original external player functionality -->
 <script src="https://biisal.github.io/Resources/StreamJs.js"></script>
-
-<!-- Original project script -->
 <script src="script.js"></script>
 
 </body>
