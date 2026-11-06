@@ -1,1116 +1,275 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#080b12">
+<meta name="theme-color" content="#090909">
 <title>{{file_name}}</title>
-
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
 <style>
-:root {
-    --bg:#080b12;
-    --purple:#a855f7;
-    --pink:#ec4899;
-    --text:#f8fafc;
-    --muted:#94a3b8;
-    --border:rgba(255,255,255,.09);
-}
-
-@property --neon-angle {
-    syntax:"<angle>";
-    initial-value:0deg;
-    inherits:false;
-}
-
-* {
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-}
-
-html {
-    scroll-behavior:smooth;
-    scroll-padding-top:85px;
-}
-
-body {
-    width:100%;
-    min-height:100vh;
-    overflow-x:hidden;
-    background:var(--bg);
-    color:var(--text);
-    font-family:'Inter',sans-serif;
-}
-
-body::before {
-    content:"";
-    position:fixed;
-    inset:0;
-    z-index:-1;
-    pointer-events:none;
-    background:
-    radial-gradient(circle at 10% 10%,rgba(147,51,234,.15),transparent 38%),
-    radial-gradient(circle at 90% 70%,rgba(219,39,119,.11),transparent 38%);
-}
-
-/* ANIMATIONS */
-
-@keyframes googleNeon {
-    to {--neon-angle:360deg;}
-}
-
-@keyframes glowPulse {
-    0%,100% {
-        filter:brightness(1);
-    }
-    50% {
-        filter:brightness(1.25);
-    }
-}
-
-@keyframes pulse {
-    50% {opacity:.35;transform:scale(.8);}
-}
-
-@keyframes fadeIn {
-    from {opacity:0;transform:translateY(20px);}
-    to {opacity:1;transform:translateY(0);}
-}
-
-@keyframes glassShine {
-    0% {left:-150%;}
-    100% {left:150%;}
-}
-
-@keyframes ambientMove {
-    from {transform:translate(0,0);}
-    to {transform:translate(40px,60px);}
-}
-
-/* BACKGROUND GLOW */
-
-.ambient {
-    position:fixed;
-    width:300px;
-    height:300px;
-    border-radius:50%;
-    filter:blur(110px);
-    opacity:.16;
-    z-index:-1;
-    pointer-events:none;
-    animation:ambientMove 9s ease-in-out infinite alternate;
-}
-
-.ambient.one {
-    background:#9333ea;
-    top:10%;
-    left:-180px;
-}
-
-.ambient.two {
-    background:#ec4899;
-    bottom:0;
-    right:-180px;
-}
+:root{--bg:#080808;--gold:#d8b45a;--gold-light:#f5dc91;--text:#fffaf0;--muted:#b8ad94;--border:rgba(216,180,90,.25)}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{width:100%;min-height:100vh;overflow-x:hidden;background:var(--bg);color:var(--text);font-family:Inter,sans-serif}
+body::before{content:"";position:fixed;inset:0;z-index:-3;pointer-events:none;background:radial-gradient(ellipse at 12% 8%,rgba(181,135,45,.14),transparent 38%),radial-gradient(ellipse at 88% 75%,rgba(117,82,24,.12),transparent 40%),linear-gradient(145deg,#080808,#10100e 52%,#070707)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{box-shadow:0 0 12px rgba(216,180,90,.09)}50%{box-shadow:0 0 25px rgba(216,180,90,.22)}}
+@keyframes snowFall{0%{transform:translate3d(0,-12vh,0);opacity:0}12%{opacity:.65}88%{opacity:.55}100%{transform:translate3d(30px,110vh,0);opacity:0}}
+@keyframes shimmer{0%{transform:translateX(-160%) skewX(-18deg)}100%{transform:translateX(260%) skewX(-18deg)}}
+.snow-layer{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.snow-layer span{position:absolute;top:-12vh;width:4px;height:4px;border-radius:50%;background:rgba(255,244,210,.72);box-shadow:0 0 9px rgba(245,220,145,.35);animation:snowFall linear infinite}
+.snow-layer span:nth-child(1){left:5%;animation-duration:13s;animation-delay:-4s}
+.snow-layer span:nth-child(2){left:14%;width:3px;height:3px;animation-duration:17s;animation-delay:-11s}
+.snow-layer span:nth-child(3){left:24%;animation-duration:15s;animation-delay:-7s}
+.snow-layer span:nth-child(4){left:37%;width:3px;height:3px;animation-duration:19s;animation-delay:-2s}
+.snow-layer span:nth-child(5){left:49%;animation-duration:14s;animation-delay:-9s}
+.snow-layer span:nth-child(6){left:61%;width:3px;height:3px;animation-duration:18s;animation-delay:-13s}
+.snow-layer span:nth-child(7){left:73%;animation-duration:16s;animation-delay:-5s}
+.snow-layer span:nth-child(8){left:84%;width:3px;height:3px;animation-duration:20s;animation-delay:-15s}
+.snow-layer span:nth-child(9){left:94%;animation-duration:15s;animation-delay:-8s}
+.ambient{position:fixed;width:280px;height:280px;border-radius:50%;filter:blur(115px);opacity:.14;z-index:-2;pointer-events:none}
+.ambient.one{background:#b8872f;top:8%;left:-190px}.ambient.two{background:#8e6826;bottom:0;right:-190px}
 
 /* NAVBAR */
+nav{position:sticky;top:0;z-index:1000;width:100%;min-height:68px;padding:14px clamp(16px,5vw,64px);display:flex!important;justify-content:space-between!important;align-items:center!important;gap:14px;background:rgba(8,8,8,.88);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-bottom:1px solid var(--border)}
+nav a{text-decoration:none;color:var(--text)}
+#heading{font-size:clamp(18px,3vw,23px);font-weight:900;letter-spacing:-.8px}
+#heading span{color:var(--gold)}
+.nryt{display:flex!important;gap:clamp(14px,3vw,28px)}
+.nryt a{color:#d6c9a8;font-size:11px;font-weight:800;letter-spacing:1.5px;transition:color .25s}
+.nryt a:hover{color:var(--gold-light)}
 
-nav {
-    position:sticky;
-    top:0;
-    z-index:1000;
-    width:100%;
-    min-height:70px;
-    padding:15px 5%;
-    display:flex !important;
-    justify-content:space-between !important;
-    align-items:center !important;
-    gap:15px;
-    background:rgba(8,11,18,.86);
-    backdrop-filter:blur(22px);
-    -webkit-backdrop-filter:blur(22px);
-    border-bottom:1px solid var(--border);
-}
-
-nav a {
-    text-decoration:none;
-    color:white;
-}
-
-#heading {
-    font-size:21px;
-    font-weight:900;
-    letter-spacing:-1px;
-}
-
-#heading span {
-    color:#c084fc;
-}
-
-.nryt {
-    display:flex !important;
-    gap:25px;
-}
-
-.nryt a {
-    color:#cbd5e1;
-    font-size:12px;
-    font-weight:800;
-    letter-spacing:1px;
-    transition:.3s;
-}
-
-.nryt a:hover {
-    color:#c084fc;
-}
-
-/* MAIN LAYOUT */
-
-.outer {
-    display:block !important;
-    width:100% !important;
-    max-width:100% !important;
-    margin:0 auto !important;
-    padding:35px 16px 55px !important;
-}
-
-.inner {
-    display:block !important;
-    width:100% !important;
-    max-width:850px !important;
-    margin:0 auto !important;
-    padding:0 !important;
-}
-
-.main {
-    display:block !important;
-    width:100% !important;
-    max-width:100% !important;
-    min-width:0 !important;
-    margin:0 auto !important;
-    animation:fadeIn .8s ease;
-}
-
-.abt {
-    display:block !important;
-    float:none !important;
-    width:100% !important;
-    max-width:100% !important;
-    min-width:0 !important;
-    margin:45px auto 0 !important;
-}
-
-.about {
-    display:block !important;
-    width:100% !important;
-    max-width:100% !important;
-    margin:0 auto !important;
-}
+/* RESPONSIVE PAGE WRAPPERS */
+.outer{display:block!important;width:100%!important;max-width:100%!important;margin:0 auto!important;padding:clamp(24px,4vw,42px) 16px 55px!important}
+.inner{display:block!important;width:100%!important;max-width:920px!important;margin:0 auto!important;padding:0!important}
+.main{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0 auto!important;animation:fadeUp .7s ease both}
+.abt{display:block!important;float:none!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:42px auto 0!important}
+.about{display:block!important;width:100%!important;max-width:100%!important;margin:0 auto!important}
 
 /* HERO */
+.hero{text-align:center;margin:8px auto 30px}
+.hero-tag{display:inline-flex;align-items:center;gap:9px;padding:9px 17px;border:1px solid rgba(216,180,90,.42);border-radius:50px;background:linear-gradient(135deg,rgba(216,180,90,.12),rgba(255,255,255,.025));color:var(--gold-light);font-size:10px;font-weight:800;letter-spacing:2px;box-shadow:0 0 24px rgba(216,180,90,.08)}
+.hero-tag i{color:var(--gold);font-size:8px;animation:glow 2.5s infinite}
+.hero h1{font-size:clamp(29px,6vw,49px);font-weight:900;letter-spacing:-1.5px;margin:20px 0 10px;line-height:1.16}
+.gradient{background:linear-gradient(100deg,#a77b2d,#f8e5a7,#c69a43);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{color:var(--muted);font-size:13px;line-height:1.7}
 
-.hero {
-    text-align:center;
-    margin:10px auto 32px;
+/* VIDEO PLAYER - original #player selector and attributes retained */
+.video-wrapper{width:100%;max-width:920px;margin:0 auto;padding:2px;border:1px solid transparent;border-radius:20px;position:relative;isolation:isolate;background:linear-gradient(#080808,#080808) padding-box,linear-gradient(135deg,#6e501c,#f0d58a,#806027,#c49a43) border-box;box-shadow:0 0 24px rgba(216,180,90,.10),0 18px 55px rgba(0,0,0,.48);animation:glow 4s ease-in-out infinite}
+.video-inner{width:100%;overflow:hidden;background:#000;border-radius:17px;position:relative}
+#player{display:block!important;width:100%!important;max-width:100%!important;height:auto!important;aspect-ratio:16/9;object-fit:contain;background:#000;border-radius:17px}
+
+/* FILE NAME - original #myDiv retained */
+.file-name{display:flex;align-items:center;gap:14px;width:100%;min-width:0;margin:20px auto 0;padding:17px;border:1px solid var(--border);border-radius:16px;background:linear-gradient(135deg,rgba(255,255,255,.055),rgba(216,180,90,.035));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 8px 30px rgba(0,0,0,.2)}
+.file-icon{width:46px;height:46px;flex-shrink:0;display:grid;place-items:center;border-radius:13px;color:#171108;background:linear-gradient(135deg,#f4df9d,#b98732);font-size:19px;box-shadow:0 0 20px rgba(216,180,90,.18)}
+.file-info{flex:1;min-width:0}
+.file-info small{display:block;color:var(--gold);font-size:9px;font-weight:900;letter-spacing:2px;margin-bottom:6px}
+.file-info p{color:#fffaf0;font-size:14px;font-weight:700;line-height:1.65;overflow-wrap:anywhere;word-break:break-word}
+
+/* PLAYER ACTIONS - .downloadBtn and original onclick functions retained */
+.player-section{width:100%;margin-top:34px}
+.section-heading{display:flex;align-items:center;gap:12px;margin-bottom:17px}
+.heading-icon{width:43px;height:43px;flex-shrink:0;display:grid;place-items:center;border-radius:13px;background:rgba(216,180,90,.12);border:1px solid rgba(216,180,90,.24);color:var(--gold-light);font-size:17px}
+.section-heading h2{font-size:18px;font-weight:900}
+.section-heading p{color:var(--muted);font-size:11px;line-height:1.5;margin-top:4px}
+.downloadBtn{display:grid!important;grid-template-columns:minmax(0,1fr)!important;width:100%!important;gap:11px!important}
+.downloadBtn button{width:100%!important;min-width:0!important;min-height:72px;display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:14px!important;padding:13px 16px!important;border:1px solid rgba(216,180,90,.38)!important;border-radius:15px!important;background:linear-gradient(115deg,rgba(30,27,20,.98),rgba(15,15,14,.98))!important;color:var(--text)!important;font-family:inherit!important;font-size:inherit!important;font-weight:inherit!important;text-align:left!important;cursor:pointer;position:relative;isolation:isolate;overflow:hidden;box-shadow:0 6px 22px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.035);transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease}
+.downloadBtn button::after{content:"";position:absolute;inset:0 auto 0 -120%;width:55%;z-index:-1;pointer-events:none;background:linear-gradient(105deg,transparent,rgba(255,235,180,.10),transparent);transform:skewX(-18deg);animation:shimmer 7s ease-in-out infinite}
+.downloadBtn button:hover{transform:translateY(-2px);border-color:rgba(245,220,145,.8)!important;box-shadow:0 0 18px rgba(216,180,90,.13),0 10px 28px rgba(0,0,0,.28)}
+.downloadBtn button:active{transform:scale(.985)}
+.downloadBtn button img{display:block!important;width:43px!important;height:43px!important;max-width:43px!important;flex:0 0 43px;object-fit:contain;border-radius:11px;position:relative;z-index:1;background:rgba(255,255,255,.06);padding:4px}
+.btn-text{min-width:0;flex:1;position:relative;z-index:1}
+.btn-text strong{display:block;font-size:12px;font-weight:900;line-height:1.5;overflow-wrap:anywhere}
+.btn-text small{display:block;color:var(--muted);font-size:10px;margin-top:4px;line-height:1.4}
+.downloadBtn button.download-main{min-height:66px;justify-content:center!important;border-color:rgba(255,225,151,.75)!important;background:linear-gradient(110deg,#8a6425,#d5ad56,#a77b2d)!important;color:#171108!important;box-shadow:0 7px 25px rgba(190,145,55,.19)}
+.downloadBtn button.download-main::after{background:linear-gradient(105deg,transparent,rgba(255,255,255,.24),transparent)}
+.download-main img{width:30px!important;height:30px!important;flex-basis:30px!important;background:rgba(255,255,255,.12)}
+.download-main .btn-text small{color:rgba(25,18,7,.78)}
+.download-main .btn-text strong{font-size:14px}
+.download-main>i{position:relative;z-index:1;margin-left:auto;font-size:18px}
+.player-info{margin-top:16px;padding:13px;display:flex;gap:10px;align-items:center;border-radius:12px;border:1px solid rgba(216,180,90,.18);background:rgba(216,180,90,.045);color:#dfd0aa;font-size:11px;line-height:1.6}
+.player-info i{color:var(--gold);flex-shrink:0}
+
+/* ABOUT + SUPPORT: same IDs and links, visual style only */
+.abt-sec{display:block!important;width:100%!important;min-width:0!important;padding:26px 21px!important;margin:0 auto 17px!important;border:1px solid var(--border)!important;border-radius:17px;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(216,180,90,.025));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 10px 30px rgba(0,0,0,.18);text-align:center}
+.abt-sec h1{font-size:21px;font-weight:900;line-height:1.4;margin-bottom:13px}
+.abt-sec h1 span{color:var(--gold-light)}
+.abt-sec p{font-size:13px;color:var(--muted);line-height:1.9;overflow-wrap:anywhere}
+.links button{margin-top:16px;padding:13px 24px;border:1px solid #e6c779;border-radius:12px;background:linear-gradient(110deg,#8a6425,#d5ad56,#a77b2d);color:#171108;font-weight:900;cursor:pointer;transition:.25s}
+.links button:hover{transform:translateY(-2px);box-shadow:0 0 20px rgba(216,180,90,.2)}
+.links a{text-decoration:none}
+
+/* FOOTER: original text and links retained */
+footer{display:block!important;width:100%!important;padding:25px 17px;text-align:center;border-top:1px solid var(--border);background:rgba(10,10,9,.86);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
+.last-text{max-width:720px;margin:auto}
+.last-text p{font-size:11px;line-height:1.85;color:#a79d87}
+.copyright{margin-top:18px;color:#b7aa8d;font-size:11px}
+.copyright a{color:var(--gold-light);text-decoration:none}
+.icons{display:flex;justify-content:center;gap:22px;margin-top:15px}
+.icons a{color:var(--gold);font-size:20px;transition:.25s}
+.icons a:hover{color:#fff0bd;transform:translateY(-3px)}
+
+/* MOBILE */
+@media(max-width:600px){
+ nav{min-height:60px;padding:12px 15px}
+ #heading{font-size:17px;letter-spacing:-.5px}
+ .nryt{gap:14px}
+ .nryt a{font-size:9px;letter-spacing:1px}
+ .outer{padding:23px 12px 38px!important}
+ .inner,.main,.abt,.about{width:100%!important;max-width:100%!important;min-width:0!important}
+ .hero{margin-bottom:23px}
+ .hero h1{font-size:clamp(28px,8vw,34px)}
+ .hero p{font-size:12px}
+ .video-wrapper{padding:2px;border-radius:15px}
+ .video-inner,#player{border-radius:12px}
+ .file-name{padding:13px;gap:11px}
+ .file-icon{width:41px;height:41px}
+ .file-info p{font-size:12px}
+ .player-section{margin-top:28px}
+ .downloadBtn{grid-template-columns:minmax(0,1fr)!important;gap:10px!important}
+ .downloadBtn button{min-height:68px;padding:12px 13px!important}
+ .downloadBtn button img{width:39px!important;height:39px!important;flex-basis:39px}
+ .abt-sec{padding:23px 16px!important}
+ .abt-sec h1{font-size:19px}
 }
-
-.hero-tag {
-    display:inline-flex;
-    align-items:center;
-    gap:9px;
-    padding:10px 19px;
-    border-radius:50px;
-    border:1px solid transparent;
-    background:
-        linear-gradient(#11101b,#11101b) padding-box,
-        conic-gradient(from var(--neon-angle),#4285F4,#EA4335,#FBBC05,#34A853,#4285F4) border-box;
-    color:#d8b4fe;
-    font-size:11px;
-    font-weight:800;
-    letter-spacing:2px;
-    animation:googleNeon 6s linear infinite;
-    box-shadow:0 0 20px rgba(168,85,247,.12);
-}
-
-.hero-tag i {
-    color:#4ade80;
-    font-size:9px;
-    animation:pulse 1.5s infinite;
-}
-
-.hero h1 {
-    font-size:clamp(28px,6vw,48px);
-    font-weight:900;
-    letter-spacing:-1.5px;
-    margin:22px 0 12px;
-    line-height:1.2;
-}
-
-.gradient {
-    background:linear-gradient(100deg,#4285F4,#c084fc,#f472b6);
-    -webkit-background-clip:text;
-    background-clip:text;
-    color:transparent;
-}
-
-.hero p {
-    color:var(--muted);
-    font-size:14px;
-    line-height:1.7;
-}
-
-/* VIDEO PLAYER */
-
-.video-wrapper {
-    width:100%;
-    max-width:850px;
-    margin:0 auto;
-    padding:9px;
-    border:2px solid transparent;
-    border-radius:20px;
-    position:relative;
-    isolation:isolate;
-
-    background:
-        linear-gradient(#080b12,#080b12) padding-box,
-        conic-gradient(
-            from var(--neon-angle),
-            #4285F4,
-            #EA4335,
-            #FBBC05,
-            #34A853,
-            #4285F4
-        ) border-box;
-
-    animation:
-        googleNeon 5s linear infinite,
-        glowPulse 3s ease-in-out infinite;
-
-    box-shadow:
-        0 0 18px rgba(66,133,244,.12),
-        0 15px 50px rgba(0,0,0,.4);
-}
-
-.video-inner {
-    width:100%;
-    overflow:hidden;
-    background:#000;
-    border-radius:13px;
-    position:relative;
-}
-
-#player {
-    display:block !important;
-    width:100% !important;
-    max-width:100% !important;
-    height:auto !important;
-    aspect-ratio:16/9;
-    object-fit:contain;
-    background:#000;
-    border-radius:13px;
-}
-
-/* FILE INFORMATION */
-
-.file-name {
-    display:flex;
-    align-items:center;
-    gap:15px;
-    width:100%;
-    min-width:0;
-    margin:22px auto 0;
-    padding:19px;
-    border:1px solid rgba(255,255,255,.13);
-    border-radius:17px;
-
-    background:rgba(255,255,255,.045);
-    backdrop-filter:blur(22px);
-    -webkit-backdrop-filter:blur(22px);
-
-    box-shadow:
-        0 8px 35px rgba(0,0,0,.2),
-        inset 0 1px 0 rgba(255,255,255,.05);
-
-    transition:.3s;
-}
-
-.file-icon {
-    width:48px;
-    height:48px;
-    flex-shrink:0;
-    display:grid;
-    place-items:center;
-    border-radius:14px;
-    background:linear-gradient(135deg,#9333ea,#db2777);
-    font-size:21px;
-    box-shadow:0 0 20px rgba(168,85,247,.3);
-}
-
-.file-info {
-    flex:1;
-    min-width:0;
-}
-
-.file-info small {
-    display:block;
-    color:var(--muted);
-    font-size:10px;
-    font-weight:800;
-    letter-spacing:2px;
-    margin-bottom:7px;
-}
-
-.file-info p {
-    color:white;
-    font-size:14px;
-    font-weight:700;
-    line-height:1.7;
-    overflow-wrap:anywhere;
-    word-break:break-word;
-}
-
-/* PLAYER SECTION */
-
-.player-section {
-    width:100%;
-    margin-top:38px;
-}
-
-.section-heading {
-    display:flex;
-    align-items:center;
-    gap:13px;
-    margin-bottom:20px;
-}
-
-.heading-icon {
-    width:45px;
-    height:45px;
-    flex-shrink:0;
-    display:grid;
-    place-items:center;
-    border-radius:14px;
-    background:rgba(168,85,247,.14);
-    color:#c084fc;
-    font-size:19px;
-}
-
-.section-heading h2 {
-    font-size:19px;
-    font-weight:900;
-}
-
-.section-heading p {
-    color:var(--muted);
-    font-size:11px;
-    line-height:1.5;
-    margin-top:5px;
-}
-
-/* GOOGLE NEON PLAYER BUTTONS */
-
-.downloadBtn {
-    display:grid !important;
-    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-    width:100% !important;
-    gap:13px !important;
-}
-
-.downloadBtn button {
-    width:100% !important;
-    min-width:0 !important;
-    min-height:85px;
-
-    display:flex !important;
-    align-items:center !important;
-    justify-content:flex-start !important;
-    gap:13px !important;
-
-    padding:14px !important;
-
-    border:1.5px solid transparent !important;
-    border-radius:16px !important;
-
-    background:
-        linear-gradient(
-            135deg,
-            rgba(25,32,46,.94),
-            rgba(12,17,28,.94)
-        ) padding-box,
-
-        conic-gradient(
-            from var(--neon-angle),
-            #4285F4,
-            #EA4335,
-            #FBBC05,
-            #34A853,
-            #4285F4
-        ) border-box !important;
-
-    backdrop-filter:blur(18px);
-    -webkit-backdrop-filter:blur(18px);
-
-    color:white !important;
-    font-family:inherit !important;
-    font-size:inherit !important;
-    font-weight:inherit !important;
-    text-align:left !important;
-
-    cursor:pointer;
-    position:relative;
-    isolation:isolate;
-    overflow:hidden;
-
-    animation:googleNeon 7s linear infinite;
-
-    box-shadow:
-        0 5px 22px rgba(0,0,0,.22),
-        inset 0 1px 0 rgba(255,255,255,.04);
-
-    transition:transform .3s,box-shadow .3s;
-}
-
-/* MOVING LIGHT REFLECTION */
-
-.downloadBtn button::after {
-    content:"";
-    position:absolute;
-    top:0;
-    left:-150%;
-    width:65%;
-    height:100%;
-    z-index:-1;
-    pointer-events:none;
-
-    background:linear-gradient(
-        110deg,
-        transparent,
-        rgba(255,255,255,.12),
-        transparent
-    );
-
-    transform:skewX(-20deg);
-    animation:glassShine 5s ease-in-out infinite;
-}
-
-.downloadBtn button:hover {
-    transform:translateY(-4px) scale(1.01);
-
-    box-shadow:
-        0 0 12px rgba(66,133,244,.25),
-        0 0 22px rgba(234,67,53,.15),
-        0 10px 30px rgba(168,85,247,.2);
-}
-
-.downloadBtn button:active {
-    transform:scale(.97);
-}
-
-.downloadBtn button img {
-    display:block !important;
-    width:43px !important;
-    height:43px !important;
-    max-width:43px !important;
-    flex:0 0 43px;
-    object-fit:contain;
-    border-radius:10px;
-    position:relative;
-    z-index:1;
-}
-
-.btn-text {
-    min-width:0;
-    flex:1;
-    position:relative;
-    z-index:1;
-}
-
-.btn-text strong {
-    display:block;
-    font-size:12px;
-    font-weight:900;
-    line-height:1.5;
-    overflow-wrap:anywhere;
-}
-
-.btn-text small {
-    display:block;
-    color:var(--muted);
-    font-size:10px;
-    margin-top:5px;
-    line-height:1.4;
-}
-
-/* DOWNLOAD BUTTON */
-
-.downloadBtn button.download-main {
-    grid-column:1/-1;
-    min-height:65px;
-    justify-content:center !important;
-
-    background:
-        linear-gradient(110deg,#401b78,#6d28a8,#831c63) padding-box,
-        conic-gradient(
-            from var(--neon-angle),
-            #4285F4,
-            #EA4335,
-            #FBBC05,
-            #34A853,
-            #4285F4
-        ) border-box !important;
-
-    animation:googleNeon 5s linear infinite;
-}
-
-.download-main img {
-    width:30px !important;
-    height:30px !important;
-    flex-basis:30px !important;
-}
-
-.download-main .btn-text small {
-    color:#f3e8ff;
-}
-
-.download-main .btn-text strong {
-    font-size:14px;
-}
-
-/* INFORMATION */
-
-.player-info {
-    margin-top:18px;
-    padding:14px;
-    display:flex;
-    gap:10px;
-    align-items:center;
-    border-radius:12px;
-
-    border:1px solid rgba(74,222,128,.2);
-    background:rgba(74,222,128,.045);
-
-    backdrop-filter:blur(15px);
-    -webkit-backdrop-filter:blur(15px);
-
-    color:#a7f3d0;
-    font-size:11px;
-    line-height:1.6;
-}
-
-.player-info i {
-    color:#4ade80;
-}
-
-/* ABOUT GLASS CARDS */
-
-.abt-sec {
-    display:block !important;
-    width:100% !important;
-    min-width:0 !important;
-
-    padding:30px 22px !important;
-    margin:0 auto 20px !important;
-
-    border:1px solid transparent !important;
-    border-radius:19px;
-
-    background:
-        linear-gradient(
-            145deg,
-            rgba(255,255,255,.065),
-            rgba(255,255,255,.025)
-        ) padding-box,
-        conic-gradient(
-            from var(--neon-angle),
-            rgba(66,133,244,.65),
-            rgba(234,67,53,.45),
-            rgba(251,188,5,.45),
-            rgba(52,168,83,.45),
-            rgba(66,133,244,.65)
-        ) border-box;
-
-    backdrop-filter:blur(22px);
-    -webkit-backdrop-filter:blur(22px);
-
-    box-shadow:
-        0 12px 35px rgba(0,0,0,.2),
-        inset 0 1px 0 rgba(255,255,255,.05);
-
-    animation:googleNeon 10s linear infinite;
-    text-align:center;
-}
-
-.abt-sec h1 {
-    font-size:22px;
-    font-weight:900;
-    line-height:1.4;
-    margin-bottom:15px;
-}
-
-.abt-sec h1 span {
-    color:#c084fc;
-}
-
-.abt-sec p {
-    font-size:13px;
-    color:var(--muted);
-    line-height:2;
-    overflow-wrap:anywhere;
-}
-
-/* CONTACT */
-
-.links button {
-    margin-top:18px;
-    padding:13px 27px;
-    border:1px solid transparent;
-    border-radius:12px;
-
-    background:
-        linear-gradient(110deg,#7c3aed,#db2777) padding-box,
-        conic-gradient(from var(--neon-angle),#4285F4,#EA4335,#FBBC05,#34A853,#4285F4) border-box;
-
-    color:white;
-    font-weight:800;
-    cursor:pointer;
-    animation:googleNeon 6s linear infinite;
-    transition:.3s;
-}
-
-.links button:hover {
-    transform:translateY(-3px);
-    box-shadow:0 0 22px rgba(168,85,247,.3);
-}
-
-.links a {
-    text-decoration:none;
-}
-
-/* FOOTER */
-
-footer {
-    display:block !important;
-    width:100% !important;
-    padding:28px 17px;
-    text-align:center;
-    border-top:1px solid var(--border);
-    background:rgba(10,14,22,.85);
-    backdrop-filter:blur(15px);
-    -webkit-backdrop-filter:blur(15px);
-}
-
-.last-text {
-    max-width:700px;
-    margin:auto;
-}
-
-.last-text p {
-    font-size:11px;
-    line-height:1.9;
-    color:#8491a5;
-}
-
-.copyright {
-    margin-top:20px;
-    color:#94a3b8;
-    font-size:11px;
-}
-
-.copyright a {
-    color:#c084fc;
-    text-decoration:none;
-}
-
-.icons {
-    display:flex;
-    justify-content:center;
-    gap:22px;
-    margin-top:17px;
-}
-
-.icons a {
-    color:#c084fc;
-    font-size:21px;
-    transition:.3s;
-}
-
-.icons a:hover {
-    color:#f472b6;
-    transform:translateY(-3px);
-}
-
-/* MOBILE RESPONSIVE */
-
-@media(max-width:600px) {
-
-    nav {
-        min-height:62px;
-        padding:12px 16px;
-    }
-
-    #heading {
-        font-size:18px;
-    }
-
-    .nryt {
-        gap:17px;
-    }
-
-    .nryt a {
-        font-size:10px;
-    }
-
-    .outer {
-        padding:26px 13px 40px !important;
-    }
-
-    .inner,
-    .main,
-    .abt,
-    .about {
-        width:100% !important;
-        max-width:100% !important;
-        min-width:0 !important;
-    }
-
-    .hero {
-        margin-bottom:25px;
-    }
-
-    .hero h1 {
-        font-size:32px;
-    }
-
-    .hero p {
-        font-size:13px;
-    }
-
-    .video-wrapper {
-        padding:6px;
-        border-radius:15px;
-    }
-
-    .video-inner,
-    #player {
-        border-radius:10px;
-    }
-
-    .file-name {
-        padding:14px;
-    }
-
-    .file-info p {
-        font-size:13px;
-    }
-
-    .downloadBtn {
-        grid-template-columns:1fr !important;
-        gap:12px !important;
-    }
-
-    .downloadBtn button {
-        min-height:74px;
-        padding:13px !important;
-        backdrop-filter:blur(12px);
-        -webkit-backdrop-filter:blur(12px);
-    }
-
-    .downloadBtn button img {
-        width:40px !important;
-        height:40px !important;
-        flex-basis:40px;
-    }
-
-    .abt-sec {
-        padding:27px 17px !important;
-    }
-
-    .abt-sec h1 {
-        font-size:20px;
-    }
-}
-
-/* REDUCED MOTION */
-
-@media(prefers-reduced-motion:reduce) {
-    *,
-    *::before,
-    *::after {
-        animation:none !important;
-        transition:none !important;
-        scroll-behavior:auto !important;
-    }
-}
+@media(min-width:900px){.outer{padding-top:42px!important}.inner{max-width:920px!important}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 
 <body>
-
+<div class="snow-layer" aria-hidden="true">
+ <span></span><span></span><span></span><span></span><span></span>
+ <span></span><span></span><span></span><span></span>
+</div>
 <div class="ambient one"></div>
 <div class="ambient two"></div>
 
-<!-- NAVBAR -->
-
+<!-- NAVBAR: original navigation targets and destination retained -->
 <nav>
-    <div class="nleft">
-        <a href="https://t.me/Looteredev">
-            <h3 id="heading">Lootere<span>-DEV</span></h3>
-        </a>
-    </div>
-
-    <div class="nryt">
-        <a href="#main">HOME</a>
-        <a href="#sec1">ABOUT</a>
-    </div>
+ <div class="nleft">
+  <a href="https://t.me/Looteredev"><h3 id="heading">RKMOVIES<span>ZIP</span></h3></a>
+ </div>
+ <div class="nryt">
+  <a href="#main">HOME</a>
+  <a href="#sec1">ABOUT</a>
+ </div>
 </nav>
-
-<!-- MAIN CONTENT -->
 
 <div class="outer">
 <div class="inner">
+ <main class="main" id="main">
+  <div class="hero">
+   <div class="hero-tag"><i class="fa-solid fa-circle"></i> RKMOVIESZIP CINEMATIC PLAYER</div>
+   <h1>YOUR MOVIE<br><span class="gradient">AWAITS.</span></h1>
+   <p>Choose your preferred player and enjoy the experience.</p>
+  </div>
 
-    <main class="main" id="main">
+  <!-- Original video element ID, class, placeholder and attributes retained -->
+  <div class="video-wrapper">
+   <div class="video-inner">
+    <video id="player" class="player" src="{{file_url}}" type="video/mp4" playsinline controls preload="metadata" width="100%"></video>
+   </div>
+  </div>
 
-        <!-- HERO -->
+  <!-- Original file placeholder and ID retained -->
+  <div class="file-name">
+   <div class="file-icon"><i class="fa-solid fa-film"></i></div>
+   <div class="file-info">
+    <small>NOW STREAMING</small>
+    <p id="myDiv">{{file_name}}</p>
+   </div>
+  </div>
 
-        <div class="hero">
+  <section class="player-section">
+   <div class="section-heading">
+    <div class="heading-icon"><i class="fa-solid fa-play"></i></div>
+    <div><h2>Choose Your Player</h2><p>Select an external player to watch your video.</p></div>
+   </div>
 
-            <div class="hero-tag">
-                <i class="fa-solid fa-circle"></i>
-                PREMIUM STREAMING
-            </div>
+   <!-- All original player function names and onclick connections retained -->
+   <div class="downloadBtn">
+    <button type="button" onclick="vlc_player()">
+     <img src="https://i.postimg.cc/15TQ4y7B/vlc.png" alt="VLC">
+     <span class="btn-text"><strong>WATCH IN VLC PLAYER</strong><small>Open with VLC</small></span>
+    </button>
+    <button type="button" onclick="mx_player()">
+     <img src="https://i.postimg.cc/sx4Msv4T/mx.png" alt="MX Player">
+     <span class="btn-text"><strong>WATCH IN MX PLAYER</strong><small>Open with MX Player</small></span>
+    </button>
+    <button type="button" onclick="playit_player()">
+     <img src="https://i.postimg.cc/VNCwVGjz/IMG-20240408-140543.jpg" alt="PLAYit">
+     <span class="btn-text"><strong>WATCH IN PLAYit PLAYER</strong><small>Open with PLAYit</small></span>
+    </button>
+    <button type="button" onclick="km_player()">
+     <img src="https://i.postimg.cc/wT9tFQ9Z/km.png" alt="KM Player">
+     <span class="btn-text"><strong>WATCH IN KM PLAYER</strong><small>Open with KM Player</small></span>
+    </button>
+    <button type="button" onclick="s_player()">
+     <img src="https://i.postimg.cc/XYJr6NGg/s.png" alt="S Player">
+     <span class="btn-text"><strong>WATCH IN S PLAYER</strong><small>Open with S Player</small></span>
+    </button>
+    <button type="button" onclick="hd_player()">
+     <img src="https://i.postimg.cc/rFT43LNh/hd.png" alt="HD Player">
+     <span class="btn-text"><strong>WATCH IN HD PLAYER</strong><small>4K Video Player</small></span>
+    </button>
 
-            <h1>
-                YOUR MOVIE<br>
-                <span class="gradient">AWAITS.</span>
-            </h1>
+    <!-- Original download class and callback retained -->
+    <button class="download-main" type="button" onclick="bisalDownload()">
+     <img src="https://i.postimg.cc/Zncc9YLq/Pngtree-download-icon-3581467.png" alt="Download">
+     <span class="btn-text"><strong>DOWNLOAD VIDEO</strong><small>Save your video</small></span>
+     <i class="fa-solid fa-download"></i>
+    </button>
+   </div>
 
-            <p>Choose your preferred player and enjoy the experience.</p>
+   <div class="player-info">
+    <i class="fa-solid fa-circle-info"></i>
+    <span>External player apps must be installed on your device to use their respective buttons.</span>
+   </div>
+  </section>
+ </main>
 
-        </div>
-
-        <!-- VIDEO PLAYER -->
-
-        <div class="video-wrapper">
-            <div class="video-inner">
-
-                <video
-                    id="player"
-                    class="player"
-                    src="{{file_url}}"
-                    type="video/mp4"
-                    playsinline
-                    controls
-                    preload="metadata"
-                    width="100%">
-                </video>
-
-            </div>
-        </div>
-
-        <!-- FILE NAME -->
-
-        <div class="file-name">
-
-            <div class="file-icon">
-                <i class="fa-solid fa-film"></i>
-            </div>
-
-            <div class="file-info">
-                <small>NOW STREAMING</small>
-                <p id="myDiv">{{file_name}}</p>
-            </div>
-
-        </div>
-
-        <!-- PLAYER OPTIONS -->
-
-        <section class="player-section">
-
-            <div class="section-heading">
-
-                <div class="heading-icon">
-                    <i class="fa-solid fa-play"></i>
-                </div>
-
-                <div>
-                    <h2>Choose Your Player</h2>
-                    <p>Select an external player to watch your video.</p>
-                </div>
-
-            </div>
-
-            <div class="downloadBtn">
-
-                <button type="button" onclick="vlc_player()">
-                    <img src="https://i.postimg.cc/15TQ4y7B/vlc.png" alt="VLC">
-                    <span class="btn-text">
-                        <strong>WATCH IN VLC PLAYER</strong>
-                        <small>Open with VLC</small>
-                    </span>
-                </button>
-
-                <button type="button" onclick="mx_player()">
-                    <img src="https://i.postimg.cc/sx4Msv4T/mx.png" alt="MX Player">
-                    <span class="btn-text">
-                        <strong>WATCH IN MX PLAYER</strong>
-                        <small>Open with MX Player</small>
-                    </span>
-                </button>
-
-                <button type="button" onclick="playit_player()">
-                    <img src="https://i.postimg.cc/VNCwVGjz/IMG-20240408-140543.jpg" alt="PLAYit">
-                    <span class="btn-text">
-                        <strong>WATCH IN PLAYit PLAYER</strong>
-                        <small>Open with PLAYit</small>
-                    </span>
-                </button>
-
-                <button type="button" onclick="km_player()">
-                    <img src="https://i.postimg.cc/wT9tFQ9Z/km.png" alt="KM Player">
-                    <span class="btn-text">
-                        <strong>WATCH IN KM PLAYER</strong>
-                        <small>Open with KM Player</small>
-                    </span>
-                </button>
-
-                <button type="button" onclick="s_player()">
-                    <img src="https://i.postimg.cc/XYJr6NGg/s.png" alt="S Player">
-                    <span class="btn-text">
-                        <strong>WATCH IN S PLAYER</strong>
-                        <small>Open with S Player</small>
-                    </span>
-                </button>
-
-                <button type="button" onclick="hd_player()">
-                    <img src="https://i.postimg.cc/rFT43LNh/hd.png" alt="HD Player">
-                    <span class="btn-text">
-                        <strong>WATCH IN HD PLAYER</strong>
-                        <small>4K Video Player</small>
-                    </span>
-                </button>
-
-                <!-- DOWNLOAD -->
-
-                <button class="download-main" type="button" onclick="bisalDownload()">
-
-                    <img src="https://i.postimg.cc/Zncc9YLq/Pngtree-download-icon-3581467.png" alt="Download">
-
-                    <span class="btn-text">
-                        <strong>DOWNLOAD VIDEO</strong>
-                        <small>Save your video</small>
-                    </span>
-
-                    <i class="fa-solid fa-download"></i>
-
-                </button>
-
-            </div>
-
-            <div class="player-info">
-                <i class="fa-solid fa-circle-info"></i>
-                <span>External player apps must be installed on your device to use their respective buttons.</span>
-            </div>
-
-        </section>
-
-    </main>
-
-    <!-- ABOUT SECTION -->
-
-    <div class="abt">
-        <div class="about">
-
-            <div class="abt-sec" id="sec1">
-
-                <h1>WELCOME TO OUR <span>STREAMING</span> PAGE</h1>
-
-                <p>
-                    We're thrilled to have you here.
-                    Get ready for an amazing experience filled with
-                    entertainment, fun, and surprises.
-                    Grab your snacks, sit back, and enjoy the show!
-                </p>
-
-            </div>
-
-            <div class="abt-sec" id="sec4">
-
-                <h1>NEED <span>SUPPORT?</span></h1>
-
-                <p>
-                    Contact us through Telegram for support
-                    or to report any issues.
-                </p>
-
-                <div class="links contact">
-                    <a href="https://t.me/Looteredev">
-                        <button type="button">
-                            <i class="fa-brands fa-telegram"></i>
-                            CONTACT SUPPORT
-                        </button>
-                    </a>
-                </div>
-
-            </div>
-
-        </div>
+ <!-- Original About section IDs and content retained -->
+ <div class="abt">
+  <div class="about">
+   <div class="abt-sec" id="sec1">
+    <h1>WELCOME TO OUR <span>STREAMING</span> PAGE</h1>
+    <p>We're thrilled to have you here. Get ready for an amazing experience filled with entertainment, fun, and surprises. Grab your snacks, sit back, and enjoy the show!</p>
+   </div>
+   <div class="abt-sec" id="sec4">
+    <h1>NEED <span>SUPPORT?</span></h1>
+    <p>Contact us through Telegram for support or to report any issues.</p>
+    <div class="links contact">
+     <a href="https://t.me/Looteredev">
+      <button type="button"><i class="fa-brands fa-telegram"></i> CONTACT SUPPORT</button>
+     </a>
     </div>
-
+   </div>
+  </div>
+ </div>
 </div>
 </div>
 
-<!-- FOOTER -->
-
+<!-- Original footer text and destinations retained -->
 <footer>
-
-    <div class="last-text">
-        <p>
-            Welcome to our online streaming platform! Our website allows
-            users to generate streamable links for various files using
-            Telegram bots. Please note that we are not responsible for
-            the content shared or streamed through our service.
-            Users are encouraged to respect copyright laws and adhere
-            to our community guidelines. Enjoy easy, hassle-free file streaming.
-        </p>
-    </div>
-
-    <div class="copyright">
-
-        <h5>
-            Copyright © 2026
-            <a href="https://t.me/Looteredev">
-                <span>Lootere-DEVELOPER</span>
-            </a>.
-            All Rights Reserved.
-        </h5>
-
-        <div class="icons">
-
-            <a href="https://github.com/Looteredeveloper">
-                <i class="fa-brands fa-github"></i>
-            </a>
-
-            <a href="https://t.me/Looteredev">
-                <i class="fa-brands fa-telegram"></i>
-            </a>
-
-        </div>
-
-    </div>
-
+ <div class="last-text">
+  <p>Welcome to our online streaming platform! Our website allows users to generate streamable links for various files using Telegram bots. Please note that we are not responsible for the content shared or streamed through our service. Users are encouraged to respect copyright laws and adhere to our community guidelines. Enjoy easy, hassle-free file streaming.</p>
+ </div>
+ <div class="copyright">
+  <h5>Copyright © 2026 <a href="https://t.me/Looteredev"><span>RKMOVIESZIP</span></a>. All Rights Reserved.</h5>
+  <div class="icons">
+   <a href="https://github.com/Looteredeveloper"><i class="fa-brands fa-github"></i></a>
+   <a href="https://t.me/Looteredev"><i class="fa-brands fa-telegram"></i></a>
+  </div>
+ </div>
 </footer>
 
 <!-- ORIGINAL PLAYER SCRIPTS: DO NOT REMOVE -->
-
 <script src="https://biisal.github.io/Resources/StreamJs.js"></script>
 <script src="script.js"></script>
-
 </body>
 </html>
