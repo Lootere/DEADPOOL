@@ -273,18 +273,27 @@ async def execute_ad_unlocked_file_delivery(
         return await notify_callback("Aww, ye file ab database mein available nahi hai.")
     file_obj = files_[0]
 
+    settings = await get_settings(grp_id)
+    fsub_id = settings.get("fsub_id", AUTH_CHANNEL)
+    if fsub_id and int(fsub_id) != int(AUTH_REQ_CHANNEL or 0):
+        try:
+            if not await is_subscribed(client, user_id, int(fsub_id)):
+                return await notify_callback("Pehle required update channel join karein, phir GET FILE dabayein!")
+        except Exception:
+            pass
+
     ok, msg, claimed_req = await ad_unlock_manager.begin_file_delivery(
         unlock_request_id=unlock_request_id,
         actor_user_id=user_id,
         user_db=db,
         file_name=file_obj.file_name,
+        requested_file_id=file_id,
         resolution_lock_checker=is_resolution_locked,
     )
     if not ok:
         return await notify_callback(msg)
 
     try:
-        settings = await get_settings(grp_id)
         caption_tpl = settings.get("caption", CUSTOM_FILE_CAPTION)
         f_caption = caption_tpl.format(
             file_name=file_obj.file_name,
@@ -3013,10 +3022,44 @@ async def list_locked_files_command(client: Client, message: Message):
     if not _is_bot_admin(message.from_user.id):
         return await message.reply_text("<b>This command is only for Bot Admins.</b>")
     locked = sorted(await ad_unlock_manager.get_personal_locked_files(user_db=db))
-    if not locked:
-        return await message.reply_text("<b>No individually locked files configured.</b>")
-    items = "\n".join(f"• <code>{html_escape(fid)}</code>" for fid in locked[:50])
+    bulk = sorted(await ad_unlock_manager.get_bulk_locked_patterns(user_db=db))
+    if not locked and not bulk:
+        return await message.reply_text("<b>No individually or bulk locked files configured.</b>")
+    lines = [f"<b>🔒 Feature 43 Personal Locked Files ({len(locked)}) & Bulk Patterns ({len(bulk)}):</b>\n"]
+    if locked:
+        lines.append("<b>Individual File IDs:</b>")
+        lines.extend(f"• <code>{html_escape(fid)}</code>" for fid in locked[:30])
+    if bulk:
+        lines.append("\n<b>Bulk Lock Patterns:</b>")
+        lines.extend(f"• <code>{html_escape(pat)}</code>" for pat in bulk[:30])
+    await message.reply_text("\n".join(lines), parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_message(filters.command(["lock_bulk", "lockbulk"]))
+async def lock_bulk_pattern_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip():
+        return await message.reply_text("<b>Usage:</b> <code>/lock_bulk &lt;keyword_or_pattern&gt;</code>")
+    pattern = args[1].strip()
+    await ad_unlock_manager.lock_bulk_pattern(pattern, user_db=db)
     await message.reply_text(
-        f"<b>🔒 Feature 43 Personal Locked Files ({len(locked)}):</b>\n\n{items}",
+        f"<b>Bulk locked pattern <code>{html_escape(pattern)}</code> as Premium-exclusive (Feature 43 precedence).</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command(["unlock_bulk", "unlockbulk"]))
+async def unlock_bulk_pattern_command(client: Client, message: Message):
+    if not _is_bot_admin(message.from_user.id):
+        return await message.reply_text("<b>This command is only for Bot Admins.</b>")
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip():
+        return await message.reply_text("<b>Usage:</b> <code>/unlock_bulk &lt;keyword_or_pattern&gt;</code>")
+    pattern = args[1].strip()
+    await ad_unlock_manager.unlock_bulk_pattern(pattern, user_db=db)
+    await message.reply_text(
+        f"<b>Unlocked bulk pattern <code>{html_escape(pattern)}</code>.</b>",
         parse_mode=enums.ParseMode.HTML,
     )

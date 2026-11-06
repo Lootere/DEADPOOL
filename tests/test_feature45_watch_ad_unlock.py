@@ -42,14 +42,46 @@ build_daily_limit_exhausted_text = ad_unlock_mod.build_daily_limit_exhausted_tex
 validate_button_readability = button_typography.validate_button_readability
 
 
+class _FakeMongoCollection:
+    """In-memory mock of MongoDB collection (`ad_unlock_requests`) across bot restarts."""
+
+    def __init__(self) -> None:
+        self.docs: dict[str, dict] = {}
+        self.indexes: list[tuple] = []
+
+    async def create_index(self, keys, **kwargs):
+        self.indexes.append((keys, kwargs))
+        return "idx_ok"
+
+    async def update_one(self, query: dict, update: dict, upsert: bool = False):
+        req_id = query.get("unlock_request_id")
+        if req_id in self.docs or upsert:
+            existing = dict(self.docs.get(req_id, {}))
+            existing.update(update.get("$set", {}))
+            self.docs[req_id] = existing
+
+    async def find_one(self, query: dict):
+        req_id = query.get("unlock_request_id")
+        doc = self.docs.get(req_id)
+        return dict(doc) if doc else None
+
+
+class _FakeRawDB:
+    def __init__(self) -> None:
+        self.ad_unlock_requests = _FakeMongoCollection()
+
+
 class _FakeDailyQuotaDB:
-    """In-memory mock of user daily limit & premium access for testing."""
+    """In-memory mock of user daily limit, verify_id store, settings, and MongoDB persistence."""
 
     def __init__(self, daily_limit: int = 2) -> None:
         self.daily_limit = daily_limit
-        self.usage: dict[int, int] = {}
+        self.usage: dict[tuple[int, str], int] = {}
+        self.current_date: str = "2026-11-05"
         self.premium_users: set[int] = set()
         self.settings: dict[str, object] = {}
+        self.verify_ids: dict[tuple[int, str], dict] = {}
+        self.db = _FakeRawDB()
 
     async def has_premium_access(self, user_id: int) -> bool:
         return user_id in self.premium_users
@@ -57,11 +89,27 @@ class _FakeDailyQuotaDB:
     def consume_free_file(self, user_id: int) -> tuple[bool, int]:
         if user_id in self.premium_users:
             return True, 0
-        current = self.usage.get(user_id, 0)
+        key = (user_id, self.current_date)
+        current = self.usage.get(key, 0)
         if current >= self.daily_limit:
             return False, current
-        self.usage[user_id] = current + 1
-        return True, self.usage[user_id]
+        self.usage[key] = current + 1
+        return True, self.usage[key]
+
+    async def create_verify_id(self, user_id: int, hash_token: str):
+        self.verify_ids[(int(user_id), str(hash_token))] = {
+            "user_id": int(user_id),
+            "hash": str(hash_token),
+            "verified": False,
+        }
+
+    async def get_verify_id_info(self, user_id: int, hash_token: str):
+        return self.verify_ids.get((int(user_id), str(hash_token)))
+
+    async def update_verify_id_info(self, user_id: int, hash_token: str, value: dict):
+        rec = self.verify_ids.get((int(user_id), str(hash_token)))
+        if rec is not None:
+            rec.update(value)
 
     async def get_setting(self, key: str, default=None):
         return self.settings.get(key, default)
@@ -75,24 +123,38 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.mgr = AdUnlockManager()
         self.fake_db = _FakeDailyQuotaDB(daily_limit=2)
 
-    # 1. Free user below daily limit receives eligible files normally
-    async def test_01_free_user_below_daily_limit_receives_normal_delivery(self):
-        user_id = 1001
-        ok1, count1 = self.fake_db.consume_free_file(user_id)
-        ok2, count2 = self.fake_db.consume_free_file(user_id)
+    # 1. Daily limits: Below-limit Free user, At-limit Free user, Daily reset unchanged, Premium user unchanged
+    async def test_01_daily_limits_free_reset_and_premium_unchanged(self):
+        free_user = 1001
+        prem_user = 1099
+        self.fake_db.premium_users.add(prem_user)
+
+        # Free user below daily limit receives eligible files normally
+        ok1, c1 = self.fake_db.consume_free_file(free_user)
+        ok2, c2 = self.fake_db.consume_free_file(free_user)
         self.assertTrue(ok1)
-        self.assertEqual(count1, 1)
+        self.assertEqual(c1, 1)
         self.assertTrue(ok2)
-        self.assertEqual(count2, 2)
+        self.assertEqual(c2, 2)
+
+        # At limit -> blocked
+        ok3, c3 = self.fake_db.consume_free_file(free_user)
+        self.assertFalse(ok3)
+        self.assertEqual(c3, 2)
+
+        # Daily reset on next IST date works unchanged
+        self.fake_db.current_date = "2026-11-06"
+        ok_next_day, c_next = self.fake_db.consume_free_file(free_user)
+        self.assertTrue(ok_next_day)
+        self.assertEqual(c_next, 1)
+
+        # Premium user bypasses daily limit completely
+        for _ in range(10):
+            p_ok, _ = self.fake_db.consume_free_file(prem_user)
+            self.assertTrue(p_ok)
 
     # 2 & 3. Free user at daily limit sees Buy Premium, Watch Ad & Unlock, and Back
     async def test_02_daily_limit_exhausted_ui_and_buy_premium_destination(self):
-        user_id = 1002
-        self.fake_db.consume_free_file(user_id)
-        self.fake_db.consume_free_file(user_id)
-        ok3, _ = self.fake_db.consume_free_file(user_id)
-        self.assertFalse(ok3)
-
         text = build_daily_limit_exhausted_text()
         self.assertIn("⚠️ 𝐃𝐀𝐈𝐋𝐘 𝐋𝐈𝐌𝐈𝐓 𝐑𝐄𝐀𝐂𝐇𝐄𝐃", text)
         self.assertIn("Aaj ki free file limit khatam ho gayi hai!", text)
@@ -113,18 +175,17 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(res["is_valid"])
             self.assertTrue(res["zero_colour_emojis"])
 
-    # 4, 5, 6, 7. One verified ad unlocks ONLY 1 selected file, one-time only, without resetting daily quota
-    async def test_03_one_verified_ad_unlocks_single_file_once_and_preserves_exhausted_quota(self):
+    # 4, 5, 6, 7. File Binding: Verified file A succeeds once, File B fails using File A's auth, quota remains exhausted
+    async def test_03_file_binding_and_one_time_consumption(self):
         user_id = 1003
-        # Exhaust quota
         self.fake_db.consume_free_file(user_id)
         self.fake_db.consume_free_file(user_id)
         self.assertFalse(self.fake_db.consume_free_file(user_id)[0])
 
-        # Create request for FILE_001
+        # Create request for FILE_A
         ok, _, req = await self.mgr.create_unlock_request(
             telegram_user_id=user_id,
-            canonical_file_id="FILE_001",
+            canonical_file_id="FILE_A",
             grp_id=0,
             file_name="Deadpool.2024.1080p.mkv",
             user_db=self.fake_db,
@@ -132,6 +193,11 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ok)
         req_id = req["unlock_request_id"]
         token = req["verification_attempt_id"]
+
+        # Verify that verify_id record was created in existing verify_id store
+        v_info = await self.fake_db.get_verify_id_info(user_id, token)
+        self.assertIsNotNone(v_info)
+        self.assertFalse(v_info["verified"])
 
         # Complete verification
         v_ok, _, v_req = await self.mgr.verify_unlock_request(
@@ -142,21 +208,35 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(v_ok)
         self.assertEqual(v_req["authorization_status"], STATE_VERIFIED)
+        v_info_after = await self.fake_db.get_verify_id_info(user_id, token)
+        self.assertTrue(v_info_after["verified"])
 
-        # Deliver the single file
+        # Attempting to redeem FILE_A's authorization for FILE_B MUST FAIL
+        wrong_file_ok, wrong_file_msg, _ = await self.mgr.begin_file_delivery(
+            unlock_request_id=req_id,
+            actor_user_id=user_id,
+            requested_file_id="FILE_B",
+            user_db=self.fake_db,
+        )
+        self.assertFalse(wrong_file_ok)
+        self.assertIn("doosri file ke liye nahi", wrong_file_msg)
+
+        # Deliver FILE_A -> succeeds once
         d_ok, _, d_req = await self.mgr.begin_file_delivery(
             unlock_request_id=req_id,
             actor_user_id=user_id,
+            requested_file_id="FILE_A",
             user_db=self.fake_db,
         )
         self.assertTrue(d_ok)
-        self.assertEqual(d_req["canonical_file_id"], "FILE_001")
+        self.assertEqual(d_req["canonical_file_id"], "FILE_A")
         await self.mgr.mark_delivery_consumed(req_id, delivery_reference="msg_999", user_db=self.fake_db)
 
-        # Attempt second delivery with the same unlock_request_id -> MUST FAIL (one-time only)
+        # Second request for FILE_A using the same authorization -> MUST FAIL (one-time only)
         d2_ok, d2_msg, _ = await self.mgr.begin_file_delivery(
             unlock_request_id=req_id,
             actor_user_id=user_id,
+            requested_file_id="FILE_A",
             user_db=self.fake_db,
         )
         self.assertFalse(d2_ok)
@@ -166,10 +246,10 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.fake_db.consume_free_file(user_id)[0])
         self.assertFalse(await self.fake_db.has_premium_access(user_id))
 
-        # Requesting a second file FILE_002 requires a brand new ad verification
+        # Requesting a second file FILE_B requires a brand new ad verification
         ok_b, _, req_b = await self.mgr.create_unlock_request(
             telegram_user_id=user_id,
-            canonical_file_id="FILE_002",
+            canonical_file_id="FILE_B",
             grp_id=0,
             file_name="Wolverine.2024.720p.mkv",
             user_db=self.fake_db,
@@ -178,8 +258,8 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(req_b["unlock_request_id"], req_id)
         self.assertEqual(req_b["authorization_status"], STATE_PENDING_VERIFICATION)
 
-    # 8. Incomplete, failed, or Merely Clicked ad does not unlock any file
-    async def test_04_incomplete_or_failed_verification_blocks_delivery(self):
+    # 8. Direct callback bypass / Incomplete / Failed / Untrusted verification signal
+    async def test_04_direct_callback_bypass_and_failed_verification_blocked(self):
         user_id = 1004
         ok, _, req = await self.mgr.create_unlock_request(
             telegram_user_id=user_id,
@@ -189,7 +269,7 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ok)
         req_id = req["unlock_request_id"]
 
-        # Merely created / clicked ad URL without completing verification
+        # Direct callback bypass attempt (`ad_deliver#<req_id>`) without completing verification
         d_ok, d_msg, _ = await self.mgr.begin_file_delivery(
             unlock_request_id=req_id,
             actor_user_id=user_id,
@@ -198,21 +278,21 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(d_ok)
         self.assertIn("verification abhi poora nahi hua", d_msg)
 
-        # Wrong verification token fails closed
+        # Untrusted / forged verification token fails closed
         v_ok, _, _ = await self.mgr.verify_unlock_request(
             unlock_request_id=req_id,
             actor_user_id=user_id,
-            verification_attempt_id="WRONG_TOKEN_123",
+            verification_attempt_id="FORGED_SIGNAL_999",
             user_db=self.fake_db,
         )
         self.assertFalse(v_ok)
         updated = await self.mgr.get_request(req_id, user_db=self.fake_db)
         self.assertEqual(updated["authorization_status"], STATE_FAILED)
 
-    # 8b. Expired verification / authorization does not unlock any file
+    # 9. Expired verification / authorization does not unlock any file
     async def test_05_expired_unlock_authorization_blocks_delivery(self):
         user_id = 1005
-        ok, _, req = await self.mgr.create_unlock_request(
+        _, _, req = await self.mgr.create_unlock_request(
             telegram_user_id=user_id,
             canonical_file_id="FILE_EXP",
             user_db=self.fake_db,
@@ -242,8 +322,8 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         expired_doc = await self.mgr.get_request(req_id, user_db=self.fake_db)
         self.assertEqual(expired_doc["authorization_status"], STATE_EXPIRED)
 
-    # 9. Shared verification link/token from another user does not unlock a file
-    async def test_06_shared_verification_link_rejected_for_different_user(self):
+    # 10. Shared verification link/token from another user & token replay
+    async def test_06_shared_verification_link_and_token_replay_rejected(self):
         owner_id = 2001
         attacker_id = 2002
         _, _, req = await self.mgr.create_unlock_request(
@@ -273,6 +353,15 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(v_ok_owner)
 
+        # Owner replays verification link a second time -> blocked
+        v_replay_ok, _, _ = await self.mgr.verify_unlock_request(
+            unlock_request_id=req_id,
+            actor_user_id=owner_id,
+            verification_attempt_id=token,
+            user_db=self.fake_db,
+        )
+        self.assertFalse(v_replay_ok)
+
         # Attacker tries to claim owner's verified delivery
         d_ok_attacker, _, _ = await self.mgr.begin_file_delivery(
             unlock_request_id=req_id,
@@ -281,7 +370,7 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(d_ok_attacker)
 
-    # 10 & 11. Concurrent button clicks cannot deliver more than one file
+    # 11. Concurrent button clicks cannot deliver more than one file
     async def test_07_concurrent_delivery_clicks_only_allow_one_claim(self):
         user_id = 3001
         _, _, req = await self.mgr.create_unlock_request(
@@ -307,8 +396,8 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(successes), 1)
         self.assertEqual(len(failures), 2)
 
-    # 12. Telegram delivery failure does not unfairly consume a verified unlock before expiry
-    async def test_08_telegram_delivery_failure_preserves_unlock_for_safe_retry(self):
+    # 12. Telegram delivery failure preserves unlock for safe retry + Bot restart persistence
+    async def test_08_telegram_delivery_failure_retry_and_bot_restart_persistence(self):
         user_id = 4001
         _, _, req = await self.mgr.create_unlock_request(
             telegram_user_id=user_id,
@@ -323,28 +412,33 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
             user_db=self.fake_db,
         )
 
-        # First attempt begins delivery, then Telegram raises FloodWait / network error
-        ok1, _, _ = await self.mgr.begin_file_delivery(req_id, user_id, user_db=self.fake_db)
-        self.assertTrue(ok1)
-        await self.mgr.abort_delivery_for_retry(req_id, "FloodWait: retry after 3s", user_db=self.fake_db)
+        # Simulate bot restart by creating a brand new AdUnlockManager backed by the same DB
+        restarted_mgr = AdUnlockManager()
 
-        doc_after_err = await self.mgr.get_request(req_id, user_db=self.fake_db)
+        # First attempt begins delivery on restarted_mgr, then Telegram raises FloodWait / network error
+        ok1, _, _ = await restarted_mgr.begin_file_delivery(req_id, user_id, user_db=self.fake_db)
+        self.assertTrue(ok1)
+        await restarted_mgr.abort_delivery_for_retry(req_id, "FloodWait: retry after 3s", user_db=self.fake_db)
+
+        doc_after_err = await restarted_mgr.get_request(req_id, user_db=self.fake_db)
         self.assertEqual(doc_after_err["authorization_status"], STATE_VERIFIED)
         self.assertIsNone(doc_after_err["consumed_at"])
 
         # User retries within expiry window -> succeeds and marks CONSUMED
-        ok2, _, _ = await self.mgr.begin_file_delivery(req_id, user_id, user_db=self.fake_db)
+        ok2, _, _ = await restarted_mgr.begin_file_delivery(req_id, user_db=self.fake_db, actor_user_id=user_id)
         self.assertTrue(ok2)
-        await self.mgr.mark_delivery_consumed(req_id, delivery_reference="msg_retry_ok", user_db=self.fake_db)
-        doc_final = await self.mgr.get_request(req_id, user_db=self.fake_db)
+        await restarted_mgr.mark_delivery_consumed(req_id, delivery_reference="msg_retry_ok", user_db=self.fake_db)
+        doc_final = await restarted_mgr.get_request(req_id, user_db=self.fake_db)
         self.assertEqual(doc_final["authorization_status"], STATE_CONSUMED)
 
-    # 13, 14, 15. Feature 43 Personal File Lock & Resolution Lock take strict precedence
-    async def test_09_feature43_personal_lock_and_resolution_lock_precedence(self):
-        user_id = 5001
-        # Lock specific file via Feature 43
-        await self.mgr.lock_personal_file("FILE_VIP_PERSONAL", user_db=self.fake_db)
+        # Verify indexes were ensured on the collection
+        self.assertGreaterEqual(len(self.fake_db.db.ad_unlock_requests.indexes), 3)
 
+    # 13, 14, 15. Feature 43 Individual Lock, Bulk Lock, Resolution Lock, and Mid-Verification Lock
+    async def test_09_feature43_individual_bulk_and_mid_verification_lock_precedence(self):
+        user_id = 5001
+        # 1. Feature 43 Individual file lock
+        await self.mgr.lock_personal_file("FILE_VIP_PERSONAL", user_db=self.fake_db)
         ok_personal, msg_personal, _ = await self.mgr.create_unlock_request(
             telegram_user_id=user_id,
             canonical_file_id="FILE_VIP_PERSONAL",
@@ -354,7 +448,18 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ok_personal)
         self.assertIn("Premium", msg_personal)
 
-        # Lock via resolution (e.g. 2160p 4K)
+        # 2. Feature 43 Bulk pattern lock (e.g. locking an entire exclusive series/batch)
+        await self.mgr.lock_bulk_pattern("Mirzapur.S03", user_db=self.fake_db)
+        ok_bulk, msg_bulk, _ = await self.mgr.create_unlock_request(
+            telegram_user_id=user_id,
+            canonical_file_id="FILE_SERIES_EP1",
+            file_name="Mirzapur.S03E01.1080p.mkv",
+            user_db=self.fake_db,
+        )
+        self.assertFalse(ok_bulk)
+        self.assertIn("Premium", msg_bulk)
+
+        # 3. Resolution lock (e.g. 2160p 4K)
         ok_res, msg_res, _ = await self.mgr.create_unlock_request(
             telegram_user_id=user_id,
             canonical_file_id="FILE_4K",
@@ -365,7 +470,7 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ok_res)
         self.assertIn("Premium", msg_res)
 
-        # Scenario 15: File becomes locked while user is mid-verification
+        # 4. Lock added AFTER verification but BEFORE delivery
         ok_mid, _, req_mid = await self.mgr.create_unlock_request(
             telegram_user_id=user_id,
             canonical_file_id="FILE_MID_LOCK",
@@ -391,7 +496,7 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(d_ok)
         self.assertIn("Premium-only lock", d_msg)
 
-    # 18. Database/persistence unavailability fails closed
+    # 16. Database/persistence unavailability fails closed
     async def test_10_database_unavailability_fails_closed(self):
         user_id = 6001
         self.mgr._simulate_db_unavailable = True
@@ -407,7 +512,7 @@ class TestFeature45WatchAdUnlock(unittest.IsolatedAsyncioTestCase):
         finally:
             self.mgr._simulate_db_unavailable = False
 
-    # UI keyboards for verification & delivery follow Feature 44 readability rules
+    # 17. UI keyboards for verification & delivery follow Feature 44 readability rules
     async def test_11_verification_and_delivery_keyboards_match_feature44(self):
         v_kb = build_ad_verification_keyboard("https://short.example/abc", "https://t.me/tutorial/1")
         v_btns = [b for row in v_kb.inline_keyboard for b in row]

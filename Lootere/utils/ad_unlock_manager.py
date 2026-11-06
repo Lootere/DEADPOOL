@@ -3,9 +3,10 @@
 # Additive access-control and monetization module:
 # - Core Rule: 1 verified ad = 1 file delivery, one-time only
 # - Preserves Daily Free Limit (does not reset quota)
-# - Enforces Feature 43 Admin Personal File Lock & Resolution Lock precedence
-# - Safe retry on Telegram delivery error within expiry window
-# - Atomic state transitions & replay protection
+# - Enforces Feature 43 Admin Personal File Lock (individual & bulk) & Resolution Lock precedence
+# - Reuses existing verify_id shortener verification infrastructure
+# - Safe retry on Telegram delivery errors within expiry window
+# - Atomic state transitions, MongoDB unique/TTL indexes & replay protection
 
 import asyncio
 import importlib.util
@@ -165,6 +166,8 @@ class AdUnlockManager:
         self._enabled: bool = True
         self._expiry_seconds: int = DEFAULT_AD_UNLOCK_EXPIRY_SECONDS
         self._personal_locked_files: Set[str] = set()
+        self._bulk_locked_patterns: Set[str] = set()
+        self._indexes_ensured: bool = False
         self._simulate_db_unavailable: bool = False
         self._metrics: Dict[str, int] = {
             "requests_created": 0,
@@ -183,7 +186,7 @@ class AdUnlockManager:
         return self._locks[unlock_request_id]
 
     # ------------------------------------------------------------------
-    # Admin Configuration & Feature 43 Personal File Lock Management
+    # Admin Configuration & Feature 43 Personal/Bulk File Lock Management
     # ------------------------------------------------------------------
 
     async def is_enabled(self, user_db: Any = None) -> bool:
@@ -259,6 +262,43 @@ class AdUnlockManager:
                 pass
         return locked
 
+    async def lock_bulk_pattern(self, pattern: str, user_db: Any = None) -> None:
+        """Feature 43 Bulk Lock: Lock all files whose file_name or file_id matches `pattern`."""
+        clean_pat = str(pattern or "").strip().casefold()
+        if not clean_pat:
+            return
+        self._bulk_locked_patterns.add(clean_pat)
+        if user_db is not None and hasattr(user_db, "get_setting") and hasattr(user_db, "set_setting"):
+            try:
+                existing = await user_db.get_setting("BULK_LOCKED_PATTERNS", default=[])
+                updated = sorted(set(existing or []) | {clean_pat})
+                await user_db.set_setting("BULK_LOCKED_PATTERNS", updated)
+            except Exception:
+                pass
+
+    async def unlock_bulk_pattern(self, pattern: str, user_db: Any = None) -> None:
+        """Feature 43 Bulk Lock: Remove bulk lock pattern."""
+        clean_pat = str(pattern or "").strip().casefold()
+        self._bulk_locked_patterns.discard(clean_pat)
+        if user_db is not None and hasattr(user_db, "get_setting") and hasattr(user_db, "set_setting"):
+            try:
+                existing = await user_db.get_setting("BULK_LOCKED_PATTERNS", default=[])
+                updated = [p for p in (existing or []) if p != clean_pat]
+                await user_db.set_setting("BULK_LOCKED_PATTERNS", updated)
+            except Exception:
+                pass
+
+    async def get_bulk_locked_patterns(self, user_db: Any = None) -> Set[str]:
+        patterns = set(self._bulk_locked_patterns)
+        if user_db is not None and hasattr(user_db, "get_setting"):
+            try:
+                db_patterns = await user_db.get_setting("BULK_LOCKED_PATTERNS", default=[])
+                if db_patterns:
+                    patterns.update(str(x).casefold() for x in db_patterns)
+            except Exception:
+                pass
+        return patterns
+
     async def is_file_premium_locked(
         self,
         canonical_file_id: str,
@@ -266,11 +306,20 @@ class AdUnlockManager:
         user_db: Any = None,
         resolution_lock_checker: Optional[Callable[[str], Any]] = None,
     ) -> bool:
-        """Check whether a file is Premium-exclusive under Feature 43 or Resolution Lock."""
+        """Check whether a file is Premium-exclusive under Feature 43 (individual or bulk) or Resolution Lock."""
         clean_id = str(canonical_file_id or "").strip()
         locked_ids = await self.get_personal_locked_files(user_db=user_db)
         if clean_id in locked_ids:
             return True
+
+        bulk_patterns = await self.get_bulk_locked_patterns(user_db=user_db)
+        if bulk_patterns:
+            haystack_id = clean_id.casefold()
+            haystack_name = str(file_name or "").casefold()
+            for pat in bulk_patterns:
+                if pat and (pat in haystack_id or (haystack_name and pat in haystack_name)):
+                    return True
+
         if file_name and resolution_lock_checker is not None:
             res = resolution_lock_checker(file_name)
             if asyncio.iscoroutine(res):
@@ -280,7 +329,7 @@ class AdUnlockManager:
         return False
 
     # ------------------------------------------------------------------
-    # Persistence Helpers (Fail-Closed on DB Error)
+    # Persistence & Indexes (Fail-Closed on DB Error)
     # ------------------------------------------------------------------
 
     def _get_collection(self, user_db: Any) -> Any:
@@ -291,6 +340,23 @@ class AdUnlockManager:
             return None
         return getattr(raw_db, "ad_unlock_requests", None)
 
+    async def ensure_indexes(self, user_db: Any = None) -> bool:
+        """Ensure unique and TTL/lookup indexes on the additive ad_unlock_requests collection."""
+        if self._indexes_ensured:
+            return True
+        col = self._get_collection(user_db)
+        if col is None or not hasattr(col, "create_index"):
+            return False
+        try:
+            await col.create_index("unlock_request_id", unique=True)
+            await col.create_index([("telegram_user_id", 1), ("authorization_status", 1)])
+            await col.create_index("expires_at", expireAfterSeconds=86400)
+            self._indexes_ensured = True
+            return True
+        except Exception as exc:
+            logger.warning("Could not create indexes on ad_unlock_requests: %s", exc)
+            return False
+
     async def _save_request_record(self, record: Dict[str, Any], user_db: Any = None) -> bool:
         if self._simulate_db_unavailable:
             raise RuntimeError("Database persistence unavailable (fail-closed)")
@@ -298,6 +364,7 @@ class AdUnlockManager:
         self._requests[req_id] = dict(record)
         col = self._get_collection(user_db)
         if col is not None:
+            await self.ensure_indexes(user_db=user_db)
             await col.update_one(
                 {"unlock_request_id": req_id},
                 {"$set": dict(record)},
@@ -371,6 +438,10 @@ class AdUnlockManager:
             now = _utcnow()
             unlock_request_id = f"ADU{secrets.token_hex(5).upper()}"
             verification_attempt_id = secrets.token_urlsafe(9).replace("_", "A").replace("-", "B")[:12]
+
+            # Register in existing verify_id store if available on user_db (Phase 4 integration)
+            if user_db is not None and hasattr(user_db, "create_verify_id"):
+                await user_db.create_verify_id(int(telegram_user_id), verification_attempt_id)
 
             record: Dict[str, Any] = {
                 "unlock_request_id": unlock_request_id,
@@ -468,6 +539,15 @@ class AdUnlockManager:
                 await self._save_request_record(record, user_db=user_db)
                 return False, "Invalid verification token. Kripya naya Watch Ad link banayein.", None
 
+            # 3b. Validate & consume existing verify_id store if present on user_db (Phase 4)
+            if user_db is not None and hasattr(user_db, "get_verify_id_info"):
+                verify_info = await user_db.get_verify_id_info(int(actor_user_id), expected_token)
+                if not verify_info or verify_info.get("verified"):
+                    self._metrics["replay_attempts_blocked"] += 1
+                    return False, "Verification link expired or already used.", None
+                if hasattr(user_db, "update_verify_id_info"):
+                    await user_db.update_verify_id_info(int(actor_user_id), expected_token, {"verified": True})
+
             # 4. Check expiration
             now = _utcnow()
             expires_at = _ensure_utc(record.get("expires_at"))
@@ -525,6 +605,7 @@ class AdUnlockManager:
         actor_user_id: int,
         user_db: Any = None,
         file_name: Optional[str] = None,
+        requested_file_id: Optional[str] = None,
         resolution_lock_checker: Optional[Callable[[str], Any]] = None,
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """Atomically validate and transition VERIFIED -> DELIVERY_IN_PROGRESS before sending media."""
@@ -543,6 +624,15 @@ class AdUnlockManager:
             if int(record["telegram_user_id"]) != int(actor_user_id):
                 self._metrics["replay_attempts_blocked"] += 1
                 return False, "Ye unlock request aapke account ke liye nahi hai.", None
+
+            # 1b. Strict File Binding: Reject if caller attempts to redeem for a different file
+            if requested_file_id is not None and str(requested_file_id) != str(record["canonical_file_id"]):
+                self._metrics["replay_attempts_blocked"] += 1
+                return (
+                    False,
+                    "Ye unlock authorization sirf selected file ke liye valid hai, doosri file ke liye nahi.",
+                    None,
+                )
 
             # 2. Check current authorization status
             auth_status = record.get("authorization_status")
@@ -658,6 +748,7 @@ class AdUnlockManager:
             "enabled": self._enabled,
             "expiry_seconds": self._expiry_seconds,
             "personal_locked_files_count": len(self._personal_locked_files),
+            "bulk_locked_patterns_count": len(self._bulk_locked_patterns),
             **self._metrics,
         }
 
