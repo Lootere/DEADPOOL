@@ -42,14 +42,14 @@ PREMIUM_LOGS = int(premium) if premium and id_pattern.search(premium) else None
 pay_log = environ.get('PAYMENT_LOG_CHANNEL', environ.get('PAYMENT_LOGS', str(PREMIUM_LOGS or '')))
 PAYMENT_LOG_CHANNEL = int(pay_log) if pay_log and id_pattern.search(pay_log) else PREMIUM_LOGS
 # lock file, set file limit 
-FILE_LIMITE = int(environ.get('FILE_LIMITE', 15))
+FILE_LIMITE = int(environ.get('FILE_LIMITE', 5))
 SEND_ALL_LIMITE = int(environ.get('SEND_ALL_LIMITE', 3))
 LIMIT_MODE = is_enabled((environ.get('LIMIT_MODE', 'True')), False)
 
 # Admins, Channels & Users
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1798348973 6661494944').split()]
 OWNER_USER_NAME = environ.get("OWNER_USER_NAME", "Krish_rule") # widout 👉 @
-CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1002148604082').split()]
+CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1002087964739 -1002617794966 -1002148604082').split()]
 # post channel auto post new movie
 POST_CHANNELS = list(map(int, (channel.strip() for channel in environ.get('POST_CHANNELS', '-1002023191399').split(','))))
 AUTH_CHANNEL = int(environ.get('AUTH_CHANNEL', '0'))
