@@ -419,7 +419,7 @@ async def is_subscribed(bot, user_id, channel_id):
             return True
     return False
 
-async def get_poster(query, bulk=False, id=False, file=None):
+def _get_poster_sync(query, bulk=False, id=False, file=None):
     if not id:
         # https://t.me/GetTGLink/4183
         query = (query.strip()).lower()
@@ -497,6 +497,17 @@ async def get_poster(query, bulk=False, id=False, file=None):
         'rating': str(movie.get("rating")),
         'url':f'https://www.imdb.com/title/tt{movieid}'
     }
+
+
+async def get_poster(query, bulk=False, id=False, file=None):
+    """Async wrapper around the blocking Cinemagoer lookup.
+
+    Feature 46 runs metadata lookups from a background worker; offloading the
+    synchronous provider keeps the bot event loop responsive.
+    """
+    return await asyncio.to_thread(_get_poster_sync, query, bulk, id, file)
+
+
 # https://github.com/odysseusmax/animated-lamp/blob/2ef4730eb2b5f0596ed6d03e7b05243d93e3415b/bot/utils/broadcast.py#L37
 
 async def broadcast_messages(user_id, message):

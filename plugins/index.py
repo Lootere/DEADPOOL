@@ -251,6 +251,14 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot):
                             "Series notification failed for newly indexed file %r",
                             getattr(media, "file_name", "unknown"),
                         )
+                    try:
+                        from Lootere.utils.notification_engine import record_upload_event
+                        await record_upload_event(media)
+                    except Exception:
+                        logger.exception(
+                            "Feature 46 notification event failed for %r",
+                            getattr(media, "file_name", "unknown"),
+                        )
                 elif vnay == 0:
                     duplicate += 1
                 elif vnay == 2:

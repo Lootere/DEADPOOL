@@ -70,6 +70,15 @@ async def start():
     temp.BANNED_CHATS = b_chats
     await Media.ensure_indexes()
     try:
+        from Lootere.utils.notification_engine import (
+            set_database as set_notification_database,
+            start_notification_services,
+        )
+        set_notification_database(getattr(db, "db", None))
+        await start_notification_services(LootereBot)
+    except Exception as e:
+        logging.error(f"Failed to start Feature 46 notification services: {e}")
+    try:
         from Lootere.utils.subscription_manager import subscription_manager
         subscription_manager.set_db(getattr(db, "db", None))
         await subscription_manager.dest_mgr.initialize(

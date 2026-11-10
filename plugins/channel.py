@@ -60,6 +60,14 @@ async def media(bot, message):
                 "Series notification failed for newly indexed file %r",
                 getattr(media, "file_name", "unknown"),
             )
+        try:
+            from Lootere.utils.notification_engine import record_upload_event
+            await record_upload_event(media)
+        except Exception:
+            logging.exception(
+                "Feature 46 notification event failed for %r",
+                getattr(media, "file_name", "unknown"),
+            )
     
     if success and file_id:
         file_details = await get_file_details(file_id)

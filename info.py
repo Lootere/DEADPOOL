@@ -52,6 +52,9 @@ OWNER_USER_NAME = environ.get("OWNER_USER_NAME", "Krish_rule") # widout 👉 @
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1002833469185 -1002148604082').split()]
 # post channel auto post new movie
 POST_CHANNELS = list(map(int, (channel.strip() for channel in environ.get('POST_CHANNELS', '-1002023191399').split(','))))
+# Feature 46: auto upload notification group / CTA defaults (admin-changeable at runtime)
+AUTO_NOTIFY_GROUP_ID = environ.get('AUTO_NOTIFY_GROUP_ID', '')
+AUTO_NOTIFY_GROUP_URL = environ.get('AUTO_NOTIFY_GROUP_URL', '')
 AUTH_CHANNEL = int(environ.get('AUTH_CHANNEL', '0'))
 AUTH_REQ_CHANNEL = int(environ.get('AUTH_REQ_CHANNEL', '0'))
 NO_RESULTS_MSG = is_enabled((environ.get("NO_RESULTS_MSG", 'True')), False)
