@@ -33,6 +33,7 @@ TIMEZONE = "Asia/Kolkata"
 import logging
 from urllib.parse import quote_plus
 from Lootere.utils.file_properties import get_name, get_hash, get_media_file_size
+from Lootere.utils.file_button_formatter import format_file_result_button
 from Lootere.utils.search_ui_style import (
     apply_search_keyboard_style,
     edit_styled_reply_markup,
@@ -188,7 +189,7 @@ def _build_search_keyboard(
     if not settings.get("button", SINGLE_BUTTON):
         buttons.extend([
             [InlineKeyboardButton(
-                text=f"[{get_size(file.file_size)}] {file.file_name}",
+                text=format_file_result_button(file.file_name, file.file_size),
                 callback_data=f"files#{file.file_id}"
             )]
             for file in files
@@ -589,7 +590,7 @@ async def next_page(bot, query):
             btn = [
                 [
                     InlineKeyboardButton(
-                        text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'files#{file.file_id}'
+                        text=format_file_result_button(file.file_name, file.file_size), callback_data=f'files#{file.file_id}'
                     ),
                 ]
                 for file in files
@@ -740,7 +741,7 @@ async def language_check(bot, query):
                 btn = [
                     [
                         InlineKeyboardButton(
-                            text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'files#{file.file_id}'
+                            text=format_file_result_button(file.file_name, file.file_size), callback_data=f'files#{file.file_id}'
                         ),
                     ]
                     for file in files
@@ -1053,7 +1054,7 @@ async def quality_check(bot, query):
                 btn = [
                     [
                         InlineKeyboardButton(
-                            text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'files#{file.file_id}'
+                            text=format_file_result_button(file.file_name, file.file_size), callback_data=f'files#{file.file_id}'
                         ),
                     ]
                     for file in files
@@ -1192,7 +1193,7 @@ async def seasons_check(bot, query):
                 btn = [
                     [
                         InlineKeyboardButton(
-                            text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'files#{file.file_id}'
+                            text=format_file_result_button(file.file_name, file.file_size), callback_data=f'files#{file.file_id}'
                         ),
                     ]
                     for file in files
@@ -1391,7 +1392,7 @@ async def episode_check(bot, query):
                 btn = [
                     [
                         InlineKeyboardButton(
-                            text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'files#{file.file_id}'
+                            text=format_file_result_button(file.file_name, file.file_size), callback_data=f'files#{file.file_id}'
                         ),
                     ]
                     for file in files
@@ -3110,7 +3111,7 @@ async def auto_filter(
             btn = [
                 [
                     InlineKeyboardButton(
-                        text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'files#{file.file_id}'
+                        text=format_file_result_button(file.file_name, file.file_size), callback_data=f'files#{file.file_id}'
                     ),
                 ]
                 for file in files

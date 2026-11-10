@@ -76,7 +76,7 @@ _LEADING_SITE_OR_HANDLE_RE = re.compile(
 )
 
 _LEADING_PROMO_PREFIX_RE = re.compile(
-    r"^(?i)\s*(?:[a-z0-9_.]*(?:movies?zip|rkmovies\w*|lootere\w*|deadpool\w*|"
+    r"(?i)^\s*(?:[a-z0-9_.]*(?:movies?zip|rkmovies\w*|lootere\w*|deadpool\w*|"
     r"team|channel|uploads?|releases?|official)\s*[-_.:|]+\s*)+"
 )
 
