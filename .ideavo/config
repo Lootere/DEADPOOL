@@ -1,0 +1,52 @@
+{
+  "systemSetup": [
+    {
+      "name": "Install Python Runtime",
+      "command": "command -v python3 >/dev/null 2>&1 || (curl -fsSL https://astral.sh/uv/install.sh | sh && ~/.local/bin/uv python install 3.11)"
+    },
+    {
+      "name": "Install pip",
+      "command": "curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && python3 /tmp/get-pip.py --break-system-packages"
+    }
+  ],
+  "templateName": "custom",
+  "projectDependencies": [
+    {
+      "name": "Install Dependencies",
+      "command": "python3 -m pip install --user --break-system-packages -r requirements.txt"
+    }
+  ],
+  "codeChecks": [
+    {
+      "name": "Compile Python",
+      "command": "python3 -m compileall -q ."
+    }
+  ],
+  "buildSteps": [],
+  "runStep": [
+    {
+      "name": "Run Dev Server",
+      "command": "PORT=4000 python3 app.py",
+      "port": "4000"
+    }
+  ],
+  "deploySteps": [],
+  "cleanupFiles": [
+    "__pycache__",
+    "**/__pycache__",
+    "*.pyc",
+    "*.pyo",
+    "*.session",
+    "*.session-journal",
+    "Logs.txt",
+    "*.log",
+    ".pytest_cache"
+  ],
+  "packageManager": "pip",
+  "envPaths": [
+    {
+      "name": "default",
+      "path": ".env"
+    }
+  ]
+}
