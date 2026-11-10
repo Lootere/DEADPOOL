@@ -8,3 +8,5 @@ Logs.txt
 node_modules/
 RKMOVIESZIP_Updated_Project.zip
 public/assets/aistudio/
+.ideavo/project
+*.log
