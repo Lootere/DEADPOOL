@@ -63,6 +63,12 @@ async def start():
             spec.loader.exec_module(load)
             sys.modules["plugins." + plugin_name] = load
             print("All Files Imported => " + plugin_name)
+    try:
+        notification_plugin = sys.modules.get("plugins.auto_notifications")
+        if notification_plugin is not None:
+            await notification_plugin.register_admin_commands(LootereBot)
+    except Exception as e:
+        logging.error(f"Failed to register Feature 46 admin command menu: {e}")
     if ON_HEROKU:
         asyncio.create_task(ping_server())
     b_users, b_chats = await db.get_banned()

@@ -1,7 +1,8 @@
 """Feature 46 - Admin Notification Manager (additive plugin).
 
 Existing admin interface is command/callback based, so this module adds
-`/autonotif` plus `/autonotif_set` without touching any existing menu.
+`/notification` (primary), `/autonotif` plus `/autonotif_set` without touching
+any existing menu.
 """
 import logging
 import re
@@ -16,6 +17,54 @@ from Lootere.utils import notification_engine as engine
 logger = logging.getLogger(__name__)
 
 MENU_CALLBACK = "autonotif#"
+
+# Registered on every manager handler. `/notification` is the documented
+# Feature 46 command; the rest stay as backwards-compatible aliases.
+MANAGER_COMMANDS = (
+    "notification",
+    "autonotif",
+    "auto_notifications",
+    "notification_manager",
+)
+
+# Shown only in each admin's personal Telegram command menu (BotCommandScopeChat),
+# never in the default scope, so ordinary users never see admin controls.
+ADMIN_COMMAND_MENU = [
+    ("notification", "Open Feature 46 auto notification manager"),
+    ("autonotif", "Feature 46 auto notification manager (alias)"),
+]
+
+
+async def register_admin_commands(client) -> int:
+    """Register the admin command menu for every configured admin.
+
+    Idempotent and safe to call on every startup. A failure for one admin
+    (for example an admin who never started the bot in private) never affects
+    the others or the rest of the bot.
+    """
+    try:
+        from pyrogram.types import BotCommand, BotCommandScopeChat
+    except Exception:
+        logger.error("Cannot register admin command menu: pyrogram types unavailable")
+        return 0
+
+    commands = [BotCommand(name, description) for name, description in ADMIN_COMMAND_MENU]
+    registered = 0
+    for admin in ADMINS:
+        try:
+            admin_id = int(admin)
+        except (TypeError, ValueError):
+            continue
+        try:
+            await client.set_bot_commands(
+                commands, scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+            registered += 1
+        except Exception as exc:
+            logger.info(
+                "Admin command menu skipped for %s: %s", admin_id, type(exc).__name__
+            )
+    return registered
 
 
 def _is_admin(user_id) -> bool:
@@ -126,14 +175,11 @@ def _prompt(settings_key: str, example: str, description: str) -> str:
     return (
         f"<b>{description}</b>\n\n"
         f"Send:\n<code>/autonotif_set {settings_key} {example}</code>\n\n"
-        "<i>Use /autonotif to return to the manager.</i>"
+        "<i>Use /notification to return to the manager.</i>"
     )
 
 
-@Client.on_message(
-    filters.command(["autonotif", "auto_notifications", "notification_manager"])
-    & filters.private
-)
+@Client.on_message(filters.command(list(MANAGER_COMMANDS)) & filters.private)
 async def auto_notification_manager(client, message):
     if not _is_admin(message.from_user.id):
         return await message.reply_text("This command is restricted to bot admins.")
@@ -439,8 +485,16 @@ async def auto_notification_callback(client, query: CallbackQuery):
             indexed = event.get("indexed_at")
             when = indexed.strftime("%d %b %H:%M") if isinstance(indexed, datetime) else "?"
             code = event.get("episode_code") or ""
+            note = ""
+            if event.get("metadata_error"):
+                note = " — ⚠️ metadata: " + engine.escape_text(
+                    engine.safe_error_text(event.get("metadata_error"), 60)
+                )
+            elif event.get("metadata_source"):
+                note = f" — {engine.escape_text(event.get('metadata_source'))}"
             lines.append(
-                f"• {when} — {event.get('title')} {code} [{event.get('category')}]"
+                f"• {when} — {engine.escape_text(event.get('title'))} {code} "
+                f"[{event.get('category')}]{note}"
             )
         return await query.message.reply_text(
             "<b>Recent upload events</b>\n\n" + "\n".join(lines),

@@ -47,6 +47,7 @@ DEFAULT_SERIES_TEMPLATE = (
     "<b>📺 NEW SERIES EPISODES ADDED</b>\n\n"
     "<b>{title_line}</b>\n\n"
     "{rating_line}{imdb_line}{genre_line}{language_line}{quality_line}"
+    "{runtime_line}{description_line}"
     "{new_episodes_block}\n<b>Total New Episodes: {episode_count}</b>"
 )
 
@@ -414,9 +415,12 @@ def _metadata_matches(event: Dict[str, Any], metadata: Dict[str, Any]) -> bool:
     if event_year and meta_year and meta_year.isdigit():
         if abs(int(event_year) - int(meta_year)) > 1:
             return False
-    if event.get("category") == "series":
-        kind = clean_metadata_value(metadata.get("kind")).lower()
-        if kind and "series" not in kind:
+    kind = clean_metadata_value(metadata.get("kind")).lower()
+    if kind:
+        if event.get("category") == "series":
+            if "series" not in kind:
+                return False
+        elif "series" in kind:
             return False
     return True
 
@@ -447,41 +451,132 @@ def normalize_metadata(metadata: Any) -> Dict[str, Any]:
     return normalized
 
 
-async def resolve_metadata(event: Dict[str, Any], settings: Dict[str, Any]) -> Dict[str, Any]:
-    handle = _database()
-    cache_key = "|".join(
+def metadata_cache_key(event: Dict[str, Any]) -> str:
+    return "|".join(
         [
             str(event.get("category") or ""),
             series_key(event.get("title")),
             str(event.get("year") or ""),
         ]
     )
+
+
+async def _lookup_cinemagoer(
+    event: Dict[str, Any], settings: Dict[str, Any]
+) -> Tuple[Dict[str, Any], str]:
+    """Original provider path, kept as a fallback for backwards compatibility."""
+    title = clean_metadata_value(event.get("title"))
+    if not title:
+        return {}, "empty title"
+    query = f"{title} {event.get('year')}" if event.get("year") else title
+    timeout = max(3, int(settings.get("imdb_timeout") or 12))
+    try:
+        from utils import get_poster
+
+        raw = await asyncio.wait_for(get_poster(query), timeout=timeout)
+    except asyncio.TimeoutError:
+        return {}, "cinemagoer timeout"
+    except Exception as exc:
+        return {}, f"cinemagoer error: {safe_error_text(exc)}"
+
+    metadata = normalize_metadata(raw)
+    if not metadata:
+        return {}, "cinemagoer returned no metadata"
+    if not _metadata_matches(event, metadata):
+        return {}, "cinemagoer match rejected"
+    return metadata, ""
+
+
+async def _lookup_public_imdb(
+    event: Dict[str, Any], settings: Dict[str, Any]
+) -> Tuple[Dict[str, Any], str]:
+    """Same-provider fallback: IMDb suggestion search + GraphQL details."""
+    title = clean_metadata_value(event.get("title"))
+    if not title:
+        return {}, "empty title"
+    try:
+        from Lootere.utils import imdb_metadata
+
+        timeout = max(3, int(settings.get("imdb_timeout") or 12))
+        metadata, reason = await imdb_metadata.lookup(
+            title=title,
+            year=event.get("year"),
+            category=event.get("category") or "movie",
+            imdb_id=event.get("imdb_id") or "",
+            timeout=timeout,
+        )
+    except Exception as exc:
+        return {}, f"imdb provider error: {safe_error_text(exc)}"
+
+    metadata = normalize_metadata(metadata)
+    if not metadata:
+        return {}, reason or "imdb returned no metadata"
+    if not _metadata_matches(event, metadata):
+        return {}, "imdb match rejected"
+    return metadata, ""
+
+
+async def resolve_metadata(event: Dict[str, Any], settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve IMDb metadata, recording the exact failure reason on the event.
+
+    Metadata always resolves *before* the payload is built.  When a lookup
+    fails the notification is still delivered without the missing fields, and a
+    later lookup never edits or re-sends an already delivered post, so retries
+    can never publish a duplicate notification.
+    """
+    handle = _database()
+    cache_key = metadata_cache_key(event)
     now = _now()
+    event["metadata_error"] = ""
+    event["metadata_source"] = ""
+
     if handle is not None and cache_key:
         try:
             cached = await handle[METADATA_COLLECTION].find_one(
                 {"cache_key": cache_key, "expires_at": {"$gt": now}}
             )
             if cached is not None:
-                return normalize_metadata(cached.get("metadata"))
+                cached_metadata = normalize_metadata(cached.get("metadata"))
+                if cached_metadata:
+                    event["metadata_source"] = cached.get("source") or "cache"
+                    return cached_metadata
+                if cached.get("last_error"):
+                    event["metadata_error"] = cached["last_error"]
+                    return {}
+                # Legacy failure entry written before failure reasons existed:
+                # ignore it so the improved provider gets a fresh attempt.
         except Exception:
             logger.debug("Metadata cache read failed", exc_info=True)
 
     metadata: Dict[str, Any] = {}
-    title = clean_metadata_value(event.get("title"))
-    if title:
-        query = f"{title} {event.get('year')}" if event.get("year") else title
-        try:
-            from utils import get_poster
+    source = ""
+    reasons: List[str] = []
 
-            timeout = max(3, int(settings.get("imdb_timeout") or 12))
-            raw = await asyncio.wait_for(get_poster(query), timeout=timeout)
-            metadata = normalize_metadata(raw)
-            if metadata and not _metadata_matches(event, metadata):
-                logger.info("Rejected low-confidence IMDb match for %r", title)
-                metadata = {}
-        except Exception as exc:
-            logger.info("IMDb lookup failed for %r: %s", title, safe_error_text(exc))
+    # The public IMDb path is tried first: it has strict title/type/year
+    # matching and returns real details in the current IMDb environment.
+    imdb_metadata, imdb_reason = await _lookup_public_imdb(event, settings)
+    if imdb_metadata:
+        metadata, source = imdb_metadata, "imdb"
+    elif imdb_reason:
+        reasons.append(imdb_reason)
+
+    # Legacy Cinemagoer path remains as a fallback, never as the only source.
+    if not metadata:
+        cinemagoer_metadata, cinemagoer_reason = await _lookup_cinemagoer(event, settings)
+        if cinemagoer_metadata:
+            metadata, source = cinemagoer_metadata, "cinemagoer"
+        elif cinemagoer_reason:
+            reasons.append(cinemagoer_reason)
+
+    if not metadata:
+        event["metadata_error"] = "; ".join(reason for reason in reasons if reason)[:300]
+        logger.info(
+            "Notification metadata unavailable for %r (%s)",
+            clean_metadata_value(event.get("title")),
+            event["metadata_error"] or "unknown reason",
+        )
+    else:
+        event["metadata_source"] = source
 
     if handle is not None and cache_key:
         try:
@@ -498,6 +593,8 @@ async def resolve_metadata(event: Dict[str, Any], settings: Dict[str, Any]) -> D
                         "metadata": metadata or None,
                         "expires_at": expires,
                         "updated_at": now,
+                        "source": source,
+                        "last_error": "" if metadata else event["metadata_error"],
                     }
                 },
                 upsert=True,
@@ -562,12 +659,14 @@ def build_movie_caption(
         "imdb_line": f"🆔 IMDb: {escape_text(imdb_id)}\n" if imdb_id else "",
         "genre_line": f"🎬 Genre: {escape_text(genre)}\n" if genre else "",
         "language_line": f"🌐 Language: {escape_text(language)}\n" if language else "",
-        "quality_line": f"🎞 Quality: {escape_text(quality)}\n" if quality else "",
-        "runtime_line": f"⏱ Runtime: {escape_text(runtime)}\n" if runtime else "",
+        "quality_line": f"🎞️ Quality: {escape_text(quality)}\n" if quality else "",
+        "runtime_line": f"⏱️ Runtime: {escape_text(runtime)}\n" if runtime else "",
         "certification_line": (
             f"🔞 Certification: {escape_text(certification)}\n" if certification else ""
         ),
-        "description_line": f"📝 {escape_text(description)}\n" if description else "",
+        "description_line": (
+            f"📝 Description:\n{escape_text(description)}\n\n" if description else ""
+        ),
     }
     template = settings.get("movie_caption_template") or DEFAULT_MOVIE_TEMPLATE
     return tidy_caption(_safe_format(template, values))
@@ -588,6 +687,8 @@ def build_series_captions(
     imdb_id = clean_metadata_value(metadata.get("imdb_id"))
     genre = clean_metadata_value(metadata.get("genres"))
     language = _pick_language(first, metadata)
+    runtime = clean_metadata_value(metadata.get("runtime"))
+    description = _truncate_text(clean_metadata_value(metadata.get("plot")), 400)
     season = first.get("season")
     qualities = sorted(
         {clean_metadata_value(event.get("quality")) for event in events if event.get("quality")},
@@ -621,11 +722,17 @@ def build_series_captions(
             "episode_list": "\n".join(f"• {escape_text(code)}" for code in chunk),
             "new_episodes_block": "\n".join(block_lines),
             "episode_count": str(total_episodes),
+            "runtime": escape_text(runtime),
+            "description": escape_text(description),
             "rating_line": f"⭐ IMDb: {escape_text(rating)}/10\n" if rating else "",
             "imdb_line": f"🆔 IMDb: {escape_text(imdb_id)}\n" if imdb_id else "",
             "genre_line": f"🎬 Genre: {escape_text(genre)}\n" if genre else "",
             "language_line": f"🌐 Language: {escape_text(language)}\n" if language else "",
-            "quality_line": f"🎞 Quality: {escape_text(quality_text)}\n" if quality_text else "",
+            "quality_line": f"🎞️ Quality: {escape_text(quality_text)}\n" if quality_text else "",
+            "runtime_line": f"⏱️ Runtime: {escape_text(runtime)}\n" if runtime else "",
+            "description_line": (
+                f"📝 Description:\n{escape_text(description)}\n\n" if description else ""
+            ),
         }
         template = settings.get("series_caption_template") or DEFAULT_SERIES_TEMPLATE
         captions.append(tidy_caption(_safe_format(template, values)))
@@ -1040,6 +1147,8 @@ async def process_pending_events(bot=None, limit: int = 20) -> int:
                 payload=payload,
                 metadata_failed=not bool(metadata),
                 metadata_title=(metadata or {}).get("title", ""),
+                metadata_source=claimed.get("metadata_source") or "",
+                metadata_error=claimed.get("metadata_error") or "",
             )
             await _create_deliveries(claimed["event_id"], payload, settings)
             processed += 1
@@ -1087,6 +1196,8 @@ async def process_due_batches(bot=None, limit: int = 10) -> int:
                         "state": "READY",
                         "payload": payload,
                         "metadata_failed": not bool(metadata),
+                        "metadata_source": events[0].get("metadata_source") or "",
+                        "metadata_error": events[0].get("metadata_error") or "",
                         "episode_count": len(events),
                         "updated_at": _now(),
                     }
@@ -1118,6 +1229,22 @@ def _build_markup(delivery: Dict[str, Any]):
         return None
 
 
+async def _poster_usable(poster: str) -> bool:
+    """Validate a poster before sending, without ever blocking delivery."""
+    if not str(poster or "").lower().startswith(("http://", "https://")):
+        return False
+    try:
+        from Lootere.utils.imdb_metadata import poster_is_usable
+
+        usable, reason = await poster_is_usable(poster)
+        if not usable:
+            logger.info("Skipping unusable poster: %s", safe_error_text(reason))
+        return bool(usable)
+    except Exception:
+        # Validation is best-effort; let Telegram attempt the photo.
+        return True
+
+
 async def _deliver(bot, delivery: Dict[str, Any]) -> Any:
     from pyrogram import enums
 
@@ -1130,11 +1257,18 @@ async def _deliver(bot, delivery: Dict[str, Any]) -> Any:
         "disable_web_page_preview": True,
     }
     poster = delivery.get("poster") or ""
-    if poster and poster.lower().startswith(("http://", "https://")):
+    # Telegram photo captions are limited to 1024 characters. Longer captions
+    # are still delivered, as text, instead of failing the whole notification.
+    if poster and len(caption) > 1024:
+        logger.info("Caption too long for a photo caption; sending text instead")
+        poster = ""
+    if poster and await _poster_usable(poster):
         try:
             return await bot.send_photo(chat_id=chat_ref, photo=poster, caption=caption, **kwargs)
         except Exception as exc:
-            if classify_telegram_error(exc) in {"permanent", "flood"}:
+            # A bad/unsupported poster must never cancel the upload notification.
+            # Only FloodWait is surfaced so the retry queue keeps its cooldown.
+            if classify_telegram_error(exc) == "flood":
                 raise
             logger.info("Poster send failed, falling back to text: %s", safe_error_text(exc))
     return await bot.send_message(chat_id=chat_ref, text=caption, **kwargs)

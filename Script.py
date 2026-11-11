@@ -319,6 +319,7 @@ Money heist S01E01
 • /set_sponsor_button <text> | <url> - configure and enable sponsor button
 • /disable_sponsor_button - disable sponsor button
 • /enable_sponsor_button - re-enable saved sponsor button
+• /notification - open the auto upload notification manager (Feature 46)
 """
     ADMIC_TEX2T = """
 👇 ᴄᴏᴍᴍᴀɴᴅꜱ ʟɪꜱᴛ ꜰᴏʀ ᴀᴅᴍɪɴꜱ 👇
