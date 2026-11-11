@@ -43,6 +43,7 @@ BATCHES_COLLECTION = "notification_batches"
 METADATA_COLLECTION = "notification_metadata_cache"
 DIGESTS_COLLECTION = "weekly_digest_history"
 AUDIT_COLLECTION = "notification_audit_log"
+MOVIE_QUALITY_BATCHES_COLLECTION = "movie_quality_batches"
 
 DEFAULT_MOVIE_TEMPLATE = (
     "<b>🔥 NEW MOVIE UPLOADED</b>\n\n"
@@ -101,6 +102,15 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "metadata_failure_cache_minutes": 60,
     "max_delivery_attempts": MAX_DELIVERY_ATTEMPTS,
     "digest_last_published_at": "",
+    # Movie quality grouping settings
+    "movie_quality_grouping": True,
+    "series_episode_grouping": True,
+    "movie_batch_window_seconds": DEFAULT_BATCH_WINDOW,
+    "series_batch_window_seconds": DEFAULT_BATCH_WINDOW,
+    "late_quality_update_policy": "edit",
+    "late_episode_update_policy": "edit",
+    "description_length": "compact",
+    "poster_layout": "landscape",
 }
 
 _db_handle = None
