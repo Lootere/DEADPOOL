@@ -30,6 +30,12 @@ DEFAULT_BATCH_WINDOW = 300
 MAX_BATCH_WINDOW = 3600
 MAX_DELIVERY_ATTEMPTS = 5
 WORKER_INTERVAL = 15
+# Hard caps so a slow/stalled Telegram photo upload can never wedge the single
+# delivery worker. Text delivery is attempted as soon as the poster attempt
+# ends, whether it succeeded, failed or timed out.
+POSTER_ATTEMPT_TIMEOUT = 20
+DELIVERY_ATTEMPT_TIMEOUT = 60
+WORKER_CYCLE_TIMEOUT = 300
 
 EVENTS_COLLECTION = "notification_events"
 DELIVERIES_COLLECTION = "notification_deliveries"
@@ -518,6 +524,40 @@ async def _lookup_public_imdb(
     return metadata, ""
 
 
+async def _poster_from_search_provider(
+    event: Dict[str, Any], settings: Dict[str, Any]
+) -> str:
+    """Reuse the provider that already powers search-result posters.
+
+    Search results call ``utils.get_poster`` (Cinemagoer) and use its
+    ``poster`` field directly.  The IMDb GraphQL metadata used by
+    notifications does not always include ``primaryImage``, so this is a
+    poster-only fallback for the exact same provider.  Never raises and is
+    bounded by ``imdb_timeout``.
+    """
+    title = clean_metadata_value(event.get("title"))
+    if not title:
+        return ""
+    query = f"{title} {event.get('year')}".strip() if event.get("year") else title
+    timeout = max(3, int(settings.get("imdb_timeout") or 12))
+    try:
+        from utils import get_poster
+
+        raw = await asyncio.wait_for(get_poster(query), timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.info("Poster search fallback timed out for %r", title)
+        return ""
+    except Exception as exc:
+        logger.info("Poster search fallback failed for %r: %s", title, safe_error_text(exc))
+        return ""
+    if not isinstance(raw, dict):
+        return ""
+    poster = clean_metadata_value(raw.get("poster"))
+    if poster and poster.lower().startswith(("http://", "https://")):
+        return poster
+    return ""
+
+
 async def resolve_metadata(event: Dict[str, Any], settings: Dict[str, Any]) -> Dict[str, Any]:
     """Resolve IMDb metadata, recording the exact failure reason on the event.
 
@@ -579,6 +619,14 @@ async def resolve_metadata(event: Dict[str, Any], settings: Dict[str, Any]) -> D
         )
     else:
         event["metadata_source"] = source
+        if not clean_metadata_value(metadata.get("poster")):
+            fallback_poster = await _poster_from_search_provider(event, settings)
+            if fallback_poster:
+                metadata["poster"] = fallback_poster
+                logger.info(
+                    "Poster resolved via search provider for %r",
+                    clean_metadata_value(event.get("title")),
+                )
         logger.info(
             "Metadata resolved via %s for %r (poster=%s)",
             source,
@@ -1297,6 +1345,73 @@ async def _poster_image(poster: str) -> Tuple[bytes, str, str]:
         return b"", "", safe_error_text(exc)
 
 
+async def _attempt_poster(
+    bot,
+    chat_ref: Any,
+    poster: str,
+    caption: str,
+    photo_kwargs: Dict[str, Any],
+    delivery: Dict[str, Any],
+) -> Any:
+    """Try to send the poster photo. Returns the message or ``None``.
+
+    The poster is an optional enhancement: every failure path returns ``None``
+    so the caller can still deliver the text notification. FloodWait is the
+    only exception that propagates (the retry queue keeps its cooldown).
+    """
+    if not await _poster_usable(poster):
+        delivery["poster_status"] = "not_usable"
+        delivery["poster_error"] = "poster URL failed validation"
+        return None
+    try:
+        message = await bot.send_photo(
+            chat_id=chat_ref, photo=poster, caption=caption, **photo_kwargs
+        )
+        delivery["poster_status"] = "sent"
+        delivery["poster_error"] = ""
+        return message
+    except Exception as exc:
+        if classify_telegram_error(exc) == "flood":
+            raise
+        delivery["poster_status"] = "failed"
+        delivery["poster_error"] = safe_error_text(exc)
+        logger.warning(
+            "Poster URL send failed at Telegram stage (%s): %s",
+            delivery.get("destination_type") or "notification",
+            safe_error_text(exc),
+        )
+    data, filename, reason = await _poster_image(poster)
+    if not data:
+        delivery["poster_status"] = "download_failed"
+        delivery["poster_error"] = safe_error_text(reason) or "poster download failed"
+        logger.info(
+            "Poster unavailable at download stage (%s): %s",
+            _poster_label(poster),
+            reason or "unknown reason",
+        )
+        return None
+    try:
+        buffer = io.BytesIO(data)
+        buffer.name = filename or "poster.jpg"
+        message = await bot.send_photo(
+            chat_id=chat_ref, photo=buffer, caption=caption, **photo_kwargs
+        )
+        delivery["poster_status"] = "sent"
+        delivery["poster_error"] = ""
+        return message
+    except Exception as exc:
+        if classify_telegram_error(exc) == "flood":
+            raise
+        delivery["poster_status"] = "failed"
+        delivery["poster_error"] = safe_error_text(exc)
+        logger.warning(
+            "Poster upload failed at Telegram stage (%s): %s",
+            delivery.get("destination_type") or "notification",
+            safe_error_text(exc),
+        )
+        return None
+
+
 async def _deliver(bot, delivery: Dict[str, Any]) -> Any:
     from pyrogram import enums
 
@@ -1314,12 +1429,15 @@ async def _deliver(bot, delivery: Dict[str, Any]) -> Any:
         "reply_markup": markup,
         "disable_web_page_preview": True,
     }
+    delivery["poster_status"] = ""
+    delivery["poster_error"] = ""
     poster = delivery.get("poster") or ""
     # Telegram photo captions are limited to 1024 characters. Longer captions
     # are still delivered, as text, instead of failing the whole notification.
     if poster and len(caption) > 1024:
         logger.info("Caption too long for a photo caption; sending text instead")
         poster = ""
+        delivery["poster_status"] = "caption_too_long"
     if poster:
         logger.info(
             "Sending %s notification photo to %s (poster=%s)",
@@ -1327,43 +1445,28 @@ async def _deliver(bot, delivery: Dict[str, Any]) -> Any:
             chat_ref,
             _poster_label(poster),
         )
-    if poster and await _poster_usable(poster):
         try:
-            return await bot.send_photo(
-                chat_id=chat_ref, photo=poster, caption=caption, **photo_kwargs
+            message = await asyncio.wait_for(
+                _attempt_poster(bot, chat_ref, poster, caption, photo_kwargs, delivery),
+                timeout=POSTER_ATTEMPT_TIMEOUT,
             )
-        except Exception as exc:
-            # A bad/unsupported poster must never cancel the upload notification.
-            # Only FloodWait is surfaced so the retry queue keeps its cooldown.
-            if classify_telegram_error(exc) == "flood":
-                raise
+        except asyncio.TimeoutError:
+            message = None
+            delivery["poster_status"] = "timeout"
+            delivery["poster_error"] = (
+                f"poster attempt timed out after {POSTER_ATTEMPT_TIMEOUT}s"
+            )
             logger.warning(
-                "Poster URL send failed at Telegram stage (%s): %s",
+                "Poster attempt timed out after %ss (%s); falling back to text",
+                POSTER_ATTEMPT_TIMEOUT,
                 delivery.get("destination_type") or "notification",
-                safe_error_text(exc),
             )
-        data, filename, reason = await _poster_image(poster)
-        if data:
-            try:
-                buffer = io.BytesIO(data)
-                buffer.name = filename or "poster.jpg"
-                return await bot.send_photo(
-                    chat_id=chat_ref, photo=buffer, caption=caption, **photo_kwargs
-                )
-            except Exception as exc:
-                if classify_telegram_error(exc) == "flood":
-                    raise
-                logger.warning(
-                    "Poster upload failed at Telegram stage (%s): %s",
-                    delivery.get("destination_type") or "notification",
-                    safe_error_text(exc),
-                )
-        else:
-            logger.info(
-                "Poster unavailable at download stage (%s): %s",
-                _poster_label(poster),
-                reason or "unknown reason",
-            )
+        if message is not None:
+            return message
+    else:
+        delivery["poster_status"] = delivery.get("poster_status") or "no_poster"
+    # Text delivery is independent of the poster outcome and always carries the
+    # GET NOW button.
     return await bot.send_message(chat_id=chat_ref, text=caption, **text_kwargs)
 
 
@@ -1389,25 +1492,24 @@ async def process_deliveries(bot, limit: int = 20) -> int:
             break
         attempts = int(delivery.get("attempts") or 0)
         try:
-            message = await _deliver(bot, delivery)
-            await handle[DELIVERIES_COLLECTION].update_one(
-                {"_id": delivery["_id"]},
-                {
-                    "$set": {
-                        "status": "SENT",
-                        "message_id": getattr(message, "id", None),
-                        "sent_at": _now(),
-                        "updated_at": _now(),
-                        "last_error": "",
-                    }
-                },
+            # The hard timeout is a watchdog: if Telegram (or a photo upload)
+            # stalls, this delivery is released and the worker moves on to the
+            # next one instead of wedging the whole notification queue.
+            message = await asyncio.wait_for(
+                _deliver(bot, delivery), timeout=DELIVERY_ATTEMPT_TIMEOUT
             )
         except Exception as exc:
+            timed_out = isinstance(exc, asyncio.TimeoutError)
             attempts += 1
-            category = classify_telegram_error(exc)
-            error_text = safe_error_text(exc)
+            category = "transient" if timed_out else classify_telegram_error(exc)
+            if timed_out:
+                error_text = (
+                    f"delivery attempt timed out after {DELIVERY_ATTEMPT_TIMEOUT}s"
+                )
+            else:
+                error_text = safe_error_text(exc)
             if category == "flood":
-                wait = int(getattr(exc, "x", 30) or 30)
+                wait = 30 if timed_out else int(getattr(exc, "x", 30) or 30)
                 status = "RETRY_PENDING"
                 next_retry = _now() + timedelta(seconds=max(5, wait))
             elif category == "permanent" or attempts >= max_attempts:
@@ -1423,6 +1525,8 @@ async def process_deliveries(bot, limit: int = 20) -> int:
                         "status": status,
                         "attempts": attempts,
                         "last_error": error_text,
+                        "poster_status": delivery.get("poster_status") or "",
+                        "poster_error": delivery.get("poster_error") or "",
                         "next_retry_at": next_retry,
                         "updated_at": _now(),
                     }
@@ -1435,15 +1539,31 @@ async def process_deliveries(bot, limit: int = 20) -> int:
                     delivery.get("delivery_id"),
                     error_text,
                 )
+            sent_or_failed += 1
+            continue
+        await handle[DELIVERIES_COLLECTION].update_one(
+            {"_id": delivery["_id"]},
+            {
+                "$set": {
+                    "status": "SENT",
+                    "message_id": getattr(message, "id", None),
+                    "sent_at": _now(),
+                    "updated_at": _now(),
+                    "last_error": "",
+                    "poster_status": delivery.get("poster_status") or "",
+                    "poster_error": delivery.get("poster_error") or "",
+                }
+            },
+        )
         sent_or_failed += 1
     return sent_or_failed
 
 
-async def recover_pending_work() -> None:
+async def recover_pending_work(stale_minutes: int = 10) -> None:
     handle = _database()
     if handle is None:
         return
-    stale = _now() - timedelta(minutes=10)
+    stale = _now() - timedelta(minutes=max(0, int(stale_minutes)))
     try:
         await handle[DELIVERIES_COLLECTION].update_many(
             {"status": "PROCESSING", "updated_at": {"$lt": stale}},
@@ -1606,10 +1726,18 @@ async def notification_worker_loop(bot) -> None:
     await recover_pending_work()
     while True:
         try:
-            await process_once(bot)
-            await maybe_publish_weekly_digest(bot)
+            await asyncio.wait_for(process_once(bot), timeout=WORKER_CYCLE_TIMEOUT)
+            await asyncio.wait_for(
+                maybe_publish_weekly_digest(bot), timeout=WORKER_CYCLE_TIMEOUT
+            )
         except asyncio.CancelledError:
             raise
+        except asyncio.TimeoutError:
+            logger.error(
+                "Feature 46 worker cycle exceeded %ss; releasing stalled work",
+                WORKER_CYCLE_TIMEOUT,
+            )
+            await recover_pending_work(stale_minutes=0)
         except Exception:
             logger.exception("Feature 46 worker iteration failed")
         await asyncio.sleep(WORKER_INTERVAL)
@@ -1618,6 +1746,16 @@ async def notification_worker_loop(bot) -> None:
 async def start_notification_services(bot) -> None:
     global _worker_task
     await ensure_notification_indexes()
+    settings = await get_settings(force=True)
+    # Booleans only: confirms the running process actually read the configured
+    # switches without leaking destination IDs or secrets into the logs.
+    logger.info(
+        "Feature 46 config: enabled=%s channel=%s group=%s poster=%s",
+        bool(settings.get("enabled")),
+        bool(settings.get("channel_enabled") and settings.get("channel_id")),
+        bool(settings.get("group_enabled") and settings.get("group_id")),
+        bool(settings.get("poster_enabled")),
+    )
     if _worker_task is not None and not _worker_task.done():
         return
     _worker_task = asyncio.create_task(notification_worker_loop(bot))

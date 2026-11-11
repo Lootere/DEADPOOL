@@ -430,6 +430,11 @@ async def auto_notification_callback(client, query: CallbackQuery):
         lines = [
             f"• {item.get('destination_type')} / {item.get('delivery_id')}: "
             f"{item.get('last_error') or 'unknown error'}"
+            + (
+                f" (poster: {item.get('poster_status')})"
+                if item.get("poster_status")
+                else ""
+            )
             for item in failed
         ]
         return await query.message.reply_text(

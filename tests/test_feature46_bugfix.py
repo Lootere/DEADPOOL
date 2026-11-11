@@ -1096,5 +1096,326 @@ class PosterDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["poster"], "")
 
 
+class StallingPhotoBot:
+    """A bot whose photo upload never completes (simulates a network stall).
+
+    This is the regression that stopped *all* notifications: the delivery
+    worker awaited ``send_photo`` with no timeout, so one stalled upload
+    blocked text delivery and the whole queue forever.
+    """
+
+    def __init__(self):
+        self.photos = []
+        self.messages = []
+        self.username = "testbot"
+
+    async def send_photo(
+        self, chat_id, photo, caption="", parse_mode=None, reply_markup=None
+    ):
+        self.photos.append(photo)
+        await asyncio.Event().wait()
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.messages.append({"chat_id": str(chat_id), "text": text, **kwargs})
+
+        class Message:
+            id = len(self.messages)
+
+        return Message()
+
+
+class DeliveryWatchdogTests(unittest.IsolatedAsyncioTestCase):
+    def _delivery(self, poster=POSTER_URL):
+        return {
+            "chat_id": "-100111",
+            "caption": "Kongsi (2011)",
+            "poster": poster,
+            "button_text": "GET NOW",
+            "button_url": "https://t.me/examplegroup",
+            "destination_type": "channel",
+        }
+
+    async def asyncSetUp(self):
+        self.prev_poster_timeout = engine.POSTER_ATTEMPT_TIMEOUT
+        self.prev_delivery_timeout = engine.DELIVERY_ATTEMPT_TIMEOUT
+        engine.POSTER_ATTEMPT_TIMEOUT = 0.05
+
+    async def asyncTearDown(self):
+        engine.POSTER_ATTEMPT_TIMEOUT = self.prev_poster_timeout
+        engine.DELIVERY_ATTEMPT_TIMEOUT = self.prev_delivery_timeout
+
+    async def test_stalled_photo_upload_still_delivers_text(self):
+        previous = engine._poster_usable
+
+        async def usable(poster):
+            return True
+
+        engine._poster_usable = usable
+        try:
+            bot = StallingPhotoBot()
+            delivery = self._delivery()
+            await engine._deliver(bot, delivery)
+        finally:
+            engine._poster_usable = previous
+        self.assertEqual(len(bot.messages), 1)
+        self.assertIn("Kongsi (2011)", bot.messages[0]["text"])
+        self.assertIsNotNone(bot.messages[0]["reply_markup"])
+        self.assertTrue(bot.messages[0]["disable_web_page_preview"])
+        self.assertEqual(delivery["poster_status"], "timeout")
+        self.assertIn("timed out", delivery["poster_error"])
+
+    async def test_stalled_bytes_upload_after_url_failure_still_delivers_text(self):
+        class BytesStallingBot(StallingPhotoBot):
+            async def send_photo(
+                self, chat_id, photo, caption="", parse_mode=None, reply_markup=None
+            ):
+                if isinstance(photo, str):
+                    raise ValueError("Telegram could not fetch the photo URL")
+                self.photos.append(photo)
+                await asyncio.Event().wait()
+
+        previous_usable = engine._poster_usable
+        previous_image = engine._poster_image
+
+        async def usable(poster):
+            return True
+
+        async def image(poster):
+            return PNG_BYTES, "poster.png", ""
+
+        engine._poster_usable = usable
+        engine._poster_image = image
+        try:
+            bot = BytesStallingBot()
+            delivery = self._delivery()
+            await engine._deliver(bot, delivery)
+        finally:
+            engine._poster_usable = previous_usable
+            engine._poster_image = previous_image
+        self.assertEqual(len(bot.messages), 1)
+        self.assertEqual(delivery["poster_status"], "timeout")
+        self.assertIn("Kongsi (2011)", bot.messages[0]["text"])
+
+    async def test_stalled_poster_validation_still_delivers_text(self):
+        previous = engine._poster_usable
+
+        async def usable(poster):
+            await asyncio.Event().wait()
+
+        engine._poster_usable = usable
+        try:
+            bot = StallingPhotoBot()
+            delivery = self._delivery()
+            await engine._deliver(bot, delivery)
+        finally:
+            engine._poster_usable = previous
+        self.assertEqual(len(bot.messages), 1)
+        self.assertEqual(delivery["poster_status"], "timeout")
+
+    async def test_download_failure_is_recorded_on_delivery(self):
+        previous_usable = engine._poster_usable
+        previous_image = engine._poster_image
+
+        async def usable(poster):
+            return True
+
+        async def image(poster):
+            return b"", "", "poster HTTP 404"
+
+        engine._poster_usable = usable
+        engine._poster_image = image
+        try:
+            bot = StrictPhotoBot(reject_urls=True)
+            delivery = self._delivery()
+            await engine._deliver(bot, delivery)
+        finally:
+            engine._poster_usable = previous_usable
+            engine._poster_image = previous_image
+        self.assertEqual(len(bot.messages), 1)
+        self.assertEqual(delivery["poster_status"], "download_failed")
+        self.assertIn("404", delivery["poster_error"])
+
+    async def test_caption_too_long_records_status_and_sends_text(self):
+        bot = StrictPhotoBot()
+        delivery = self._delivery()
+        delivery["caption"] = "x" * 1100
+        await engine._deliver(bot, delivery)
+        self.assertEqual(bot.photos, [])
+        self.assertEqual(len(bot.messages), 1)
+        self.assertEqual(delivery["poster_status"], "caption_too_long")
+
+    async def test_timed_out_delivery_does_not_block_queue(self):
+        db = FakeDatabase()
+        previous_db = engine._db_handle
+        previous_deliver = engine._deliver
+        previous_settings = engine.get_settings
+        engine.set_database(db)
+        engine.DELIVERY_ATTEMPT_TIMEOUT = 0.05
+
+        async def settings(force=False):
+            return dict(engine.DEFAULT_SETTINGS)
+
+        async def sometimes_stalls(bot, delivery):
+            if delivery.get("poster") == "stall":
+                await asyncio.Event().wait()
+
+            class Message:
+                id = 1
+
+            return Message()
+
+        engine.get_settings = settings
+        engine._deliver = sometimes_stalls
+        try:
+            collection = db[engine.DELIVERIES_COLLECTION]
+            base = {
+                "status": "PENDING",
+                "attempts": 0,
+                "next_retry_at": engine._now(),
+                "button_text": "GET NOW",
+                "button_url": "https://t.me/examplegroup",
+                "caption": "Kongsi (2011)",
+            }
+            await collection.insert_one(dict(base, delivery_id="d1", poster="stall"))
+            await collection.insert_one(dict(base, delivery_id="d2", poster="ok"))
+            sent = await engine.process_deliveries(FakeBot(), limit=2)
+        finally:
+            engine.set_database(previous_db)
+            engine._deliver = previous_deliver
+            engine.get_settings = previous_settings
+        docs = {doc["delivery_id"]: doc for doc in collection.docs}
+        self.assertEqual(docs["d2"]["status"], "SENT")
+        self.assertEqual(docs["d1"]["status"], "RETRY_PENDING")
+        self.assertIn("timed out", docs["d1"]["last_error"])
+        self.assertEqual(docs["d2"]["last_error"], "")
+        self.assertEqual(sent, 2)
+
+    async def test_recovery_releases_processing_delivery(self):
+        db = FakeDatabase()
+        previous_db = engine._db_handle
+        engine.set_database(db)
+        try:
+            await db[engine.DELIVERIES_COLLECTION].insert_one(
+                {
+                    "delivery_id": "d1",
+                    "status": "PROCESSING",
+                    "updated_at": engine._now() - engine.timedelta(hours=1),
+                }
+            )
+            await engine.recover_pending_work(stale_minutes=0)
+        finally:
+            engine.set_database(previous_db)
+        self.assertEqual(
+            db[engine.DELIVERIES_COLLECTION].docs[0]["status"], "RETRY_PENDING"
+        )
+
+    async def test_worker_loop_survives_stalled_cycle(self):
+        previous_once = engine.process_once
+        previous_digest = engine.maybe_publish_weekly_digest
+        previous_recover = engine.recover_pending_work
+        previous_cycle = engine.WORKER_CYCLE_TIMEOUT
+        previous_interval = engine.WORKER_INTERVAL
+        calls = {"cycles": 0, "recover": None}
+
+        async def stalled_once(bot):
+            calls["cycles"] += 1
+            await asyncio.Event().wait()
+
+        async def recovery(stale_minutes=10):
+            calls["recover"] = stale_minutes
+
+        engine.process_once = stalled_once
+        engine.maybe_publish_weekly_digest = lambda bot: asyncio.sleep(0)
+        engine.recover_pending_work = recovery
+        engine.WORKER_CYCLE_TIMEOUT = 0.05
+        engine.WORKER_INTERVAL = 0
+        try:
+            task = asyncio.create_task(engine.notification_worker_loop(object()))
+            await asyncio.sleep(0.2)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+        finally:
+            engine.process_once = previous_once
+            engine.maybe_publish_weekly_digest = previous_digest
+            engine.recover_pending_work = previous_recover
+            engine.WORKER_CYCLE_TIMEOUT = previous_cycle
+            engine.WORKER_INTERVAL = previous_interval
+        self.assertGreaterEqual(calls["cycles"], 2)
+        self.assertEqual(calls["recover"], 0)
+
+    async def test_search_provider_poster_is_reused(self):
+        fake_utils = types.ModuleType("utils")
+
+        async def get_poster(query, bulk=False, id=False, file=None):
+            return {"poster": POSTER_URL}
+
+        fake_utils.get_poster = get_poster
+        previous = sys.modules.get("utils")
+        sys.modules["utils"] = fake_utils
+        try:
+            poster = await engine._poster_from_search_provider(
+                movie_event(), dict(engine.DEFAULT_SETTINGS)
+            )
+        finally:
+            if previous is None:
+                sys.modules.pop("utils", None)
+            else:
+                sys.modules["utils"] = previous
+        self.assertEqual(poster, POSTER_URL)
+
+    async def test_search_provider_failure_returns_no_poster(self):
+        fake_utils = types.ModuleType("utils")
+
+        async def get_poster(query, bulk=False, id=False, file=None):
+            raise RuntimeError("provider down")
+
+        fake_utils.get_poster = get_poster
+        previous = sys.modules.get("utils")
+        sys.modules["utils"] = fake_utils
+        try:
+            poster = await engine._poster_from_search_provider(
+                movie_event(), dict(engine.DEFAULT_SETTINGS)
+            )
+        finally:
+            if previous is None:
+                sys.modules.pop("utils", None)
+            else:
+                sys.modules["utils"] = previous
+        self.assertEqual(poster, "")
+
+    async def test_poster_falls_back_to_search_provider(self):
+        previous_pub = engine._lookup_public_imdb
+        previous_legacy = engine._lookup_cinemagoer
+        previous_poster = engine._poster_from_search_provider
+        previous_db = engine._db_handle
+        engine.set_database(FakeDatabase())
+
+        async def public(event, settings):
+            data = imdb.metadata_from_node(FULL_MOVIE_NODE)
+            data.pop("poster", None)
+            return data, ""
+
+        async def legacy(event, settings):
+            return {}, "skip"
+
+        async def poster(event, settings):
+            return POSTER_URL
+
+        engine._lookup_public_imdb = public
+        engine._lookup_cinemagoer = legacy
+        engine._poster_from_search_provider = poster
+        try:
+            metadata = await engine.resolve_metadata(
+                movie_event(), dict(engine.DEFAULT_SETTINGS)
+            )
+        finally:
+            engine.set_database(previous_db)
+            engine._lookup_public_imdb = previous_pub
+            engine._lookup_cinemagoer = previous_legacy
+            engine._poster_from_search_provider = previous_poster
+        self.assertEqual(metadata["poster"], POSTER_URL)
+
+
 if __name__ == "__main__":
     unittest.main()
