@@ -8,13 +8,16 @@ Covers the three reported bugs:
 All tests are offline: provider HTTP is patched with deterministic doubles.
 """
 import asyncio
+import base64
 import importlib.util
+import io
 import os
 import sys
 import types
 import unittest
 import urllib.error
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
@@ -688,6 +691,7 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.previous_get_settings = engine.get_settings
         self.previous_resolve = engine.resolve_metadata
         self.previous_poster_usable = engine._poster_usable
+        self.previous_poster_image = engine._poster_image
         engine.set_database(self.db)
         self.settings = dict(engine.DEFAULT_SETTINGS)
         self.settings.update(
@@ -712,15 +716,21 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         async def poster_usable(poster):
             return True
 
+        async def poster_image(poster):
+            # Offline by default: the bytes retry path is tested explicitly.
+            return b"", "", "test offline"
+
         engine.get_settings = fake_get_settings
         engine.resolve_metadata = fake_resolve
         engine._poster_usable = poster_usable
+        engine._poster_image = poster_image
 
     async def asyncTearDown(self):
         engine.set_database(self.previous_db)
         engine.get_settings = self.previous_get_settings
         engine.resolve_metadata = self.previous_resolve
         engine._poster_usable = self.previous_poster_usable
+        engine._poster_image = self.previous_poster_image
 
     async def _queue_movie(self, unique="movie-1"):
         await engine.record_upload_event(
@@ -839,6 +849,251 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(bot.messages)
         self.assertIn("WEEKLY UPLOAD REPORT", bot.messages[0]["text"])
         self.assertEqual(len(self.db[engine.DIGESTS_COLLECTION].docs), 1)
+
+
+# ---------------------------------------------------------------------------
+# Poster-only regression tests
+# ---------------------------------------------------------------------------
+PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+POSTER_URL = "https://m.media-amazon.com/images/M/poster.jpg"
+
+
+class StrictPhotoBot:
+    """Mirrors pyrogram's send_photo signature: no **kwargs, no
+    disable_web_page_preview. The original bug was a TypeError raised here."""
+
+    def __init__(self, reject_urls=False):
+        self.photos = []
+        self.messages = []
+        self.reject_urls = reject_urls
+        self.username = "testbot"
+
+    async def send_photo(
+        self,
+        chat_id,
+        photo,
+        caption="",
+        parse_mode=None,
+        caption_entities=None,
+        has_spoiler=None,
+        disable_notification=None,
+        message_thread_id=None,
+        reply_to_message_id=None,
+        reply_markup=None,
+        progress=None,
+        progress_args=(),
+    ):
+        if self.reject_urls and isinstance(photo, str):
+            raise ValueError("Telegram could not fetch the photo URL")
+        self.photos.append(
+            {
+                "chat_id": str(chat_id),
+                "photo": photo,
+                "caption": caption,
+                "parse_mode": parse_mode,
+                "reply_markup": reply_markup,
+            }
+        )
+
+        class Message:
+            id = len(self.photos)
+
+        return Message()
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.messages.append({"chat_id": str(chat_id), "text": text, **kwargs})
+        return None
+
+
+class _FakePillowResponse:
+    def __init__(self, data, content_type, status=200, length=None):
+        self._data = data
+        self.status = status
+        self.headers = _FakeHeaders(content_type, length)
+
+    def read(self, size=-1):
+        return self._data if size < 0 else self._data[:size]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+class _FakeHeaders:
+    def __init__(self, content_type, length=None):
+        self._content_type = content_type
+        self._length = length
+
+    def get_content_type(self):
+        return self._content_type
+
+    def get(self, key, default=None):
+        if key == "Content-Length":
+            return self._length
+        return default
+
+
+class PosterDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    def _delivery(self, poster=POSTER_URL, caption="Kongsi (2011)"):
+        return {
+            "chat_id": "-100111",
+            "caption": caption,
+            "poster": poster,
+            "button_text": "GET NOW",
+            "button_url": "https://t.me/examplegroup",
+            "destination_type": "channel",
+        }
+
+    async def test_photo_send_does_not_pass_unsupported_kwargs(self):
+        previous = engine._poster_usable
+        engine._poster_usable = lambda poster: asyncio.sleep(0, result=True)
+        try:
+            bot = StrictPhotoBot()
+            await engine._deliver(bot, self._delivery())
+        finally:
+            engine._poster_usable = previous
+        self.assertEqual(len(bot.photos), 1)
+        self.assertEqual(bot.messages, [])
+        button = bot.photos[0]["reply_markup"].inline_keyboard[0][0]
+        self.assertEqual(button.text, "GET NOW")
+        self.assertEqual(button.url, "https://t.me/examplegroup")
+
+    async def test_url_failure_retries_with_downloaded_image_bytes(self):
+        previous_usable = engine._poster_usable
+        previous_image = engine._poster_image
+
+        async def usable(poster):
+            return True
+
+        async def image(poster):
+            return PNG_BYTES, "poster.png", ""
+
+        engine._poster_usable = usable
+        engine._poster_image = image
+        try:
+            bot = StrictPhotoBot(reject_urls=True)
+            await engine._deliver(bot, self._delivery())
+        finally:
+            engine._poster_usable = previous_usable
+            engine._poster_image = previous_image
+        self.assertEqual(len(bot.photos), 1)
+        self.assertIsInstance(bot.photos[0]["photo"], io.BytesIO)
+        self.assertEqual(bot.photos[0]["photo"].name, "poster.png")
+        self.assertEqual(bot.messages, [])
+
+    async def test_download_failure_still_delivers_text_with_button(self):
+        previous_usable = engine._poster_usable
+        previous_image = engine._poster_image
+
+        async def usable(poster):
+            return True
+
+        async def image(poster):
+            return b"", "", "poster HTTP 404"
+
+        engine._poster_usable = usable
+        engine._poster_image = image
+        try:
+            bot = StrictPhotoBot(reject_urls=True)
+            await engine._deliver(bot, self._delivery())
+        finally:
+            engine._poster_usable = previous_usable
+            engine._poster_image = previous_image
+        self.assertEqual(bot.photos, [])
+        self.assertEqual(len(bot.messages), 1)
+        self.assertIsNotNone(bot.messages[0]["reply_markup"])
+        self.assertTrue(bot.messages[0]["disable_web_page_preview"])
+
+    def test_validate_accepts_real_png(self):
+        usable, reason = imdb.validate_poster_bytes(PNG_BYTES, "image/png")
+        self.assertTrue(usable, reason)
+
+    def test_validate_rejects_html_body(self):
+        usable, reason = imdb.validate_poster_bytes(b"<html>blocked</html>", "text/html")
+        self.assertFalse(usable)
+        self.assertIn("not an image", reason)
+
+    def test_validate_rejects_html_mislabelled_as_image(self):
+        usable, reason = imdb.validate_poster_bytes(b"<html>blocked</html>", "image/jpeg")
+        self.assertFalse(usable)
+        self.assertIn("not a supported image", reason)
+
+    def test_validate_rejects_oversized_image(self):
+        usable, reason = imdb.validate_poster_bytes(
+            PNG_BYTES + b"\x00" * (imdb.MAX_POSTER_BYTES + 1), "image/png"
+        )
+        self.assertFalse(usable)
+        self.assertIn("limit", reason)
+
+    def test_fetch_downloads_and_validates_image(self):
+        response = _FakePillowResponse(PNG_BYTES, "image/png", length=str(len(PNG_BYTES)))
+        with mock.patch.object(imdb.urllib.request, "urlopen", return_value=response):
+            data, filename, reason = imdb._fetch_poster_bytes_sync(POSTER_URL)
+        self.assertEqual(reason, "")
+        self.assertEqual(data, PNG_BYTES)
+        self.assertEqual(filename, "poster.png")
+
+    def test_fetch_follows_redirects_via_final_response(self):
+        response = _FakePillowResponse(PNG_BYTES, "image/png")
+        with mock.patch.object(imdb.urllib.request, "urlopen", return_value=response) as opener:
+            data, _, reason = imdb._fetch_poster_bytes_sync(POSTER_URL)
+        self.assertTrue(opener.called)
+        self.assertEqual(reason, "")
+        self.assertTrue(data)
+
+    def test_fetch_rejects_html_error_page(self):
+        response = _FakePillowResponse(b"<html>nope</html>", "text/html")
+        with mock.patch.object(imdb.urllib.request, "urlopen", return_value=response):
+            data, filename, reason = imdb._fetch_poster_bytes_sync(POSTER_URL)
+        self.assertEqual(data, b"")
+        self.assertEqual(filename, "")
+        self.assertIn("not an image", reason)
+
+    def test_fetch_rejects_missing_image(self):
+        error = urllib.error.HTTPError(POSTER_URL, 404, "Not Found", {}, None)
+        with mock.patch.object(imdb.urllib.request, "urlopen", side_effect=error):
+            data, _, reason = imdb._fetch_poster_bytes_sync(POSTER_URL)
+        self.assertEqual(data, b"")
+        self.assertIn("404", reason)
+
+    def test_convert_webp_to_jpeg_when_pillow_available(self):
+        try:
+            from PIL import Image
+        except Exception:
+            self.skipTest("Pillow not installed")
+        buffer = io.BytesIO()
+        Image.new("RGB", (8, 8), (20, 30, 40)).save(buffer, format="WEBP")
+        prepared, filename = imdb._prepare_poster_bytes(buffer.getvalue())
+        self.assertEqual(filename, "poster.jpg")
+        usable, reason = imdb.validate_poster_bytes(prepared, "image/jpeg")
+        self.assertTrue(usable, reason)
+
+    async def test_fallback_poster_used_when_metadata_missing(self):
+        settings = dict(engine.DEFAULT_SETTINGS)
+        settings["fallback_poster"] = POSTER_URL
+        payload = engine.build_payload(
+            "evt", "movie", [movie_event()], {}, settings
+        )
+        self.assertEqual(payload["poster"], POSTER_URL)
+
+    def test_event_poster_used_when_metadata_missing(self):
+        event = movie_event()
+        event["poster"] = POSTER_URL
+        payload = engine.build_payload(
+            "evt", "movie", [event], {}, dict(engine.DEFAULT_SETTINGS)
+        )
+        self.assertEqual(payload["poster"], POSTER_URL)
+
+    def test_poster_disabled_setting_still_removes_poster(self):
+        settings = dict(engine.DEFAULT_SETTINGS)
+        settings["poster_enabled"] = False
+        settings["fallback_poster"] = POSTER_URL
+        payload = engine.build_payload("evt", "movie", [movie_event()], {}, settings)
+        self.assertEqual(payload["poster"], "")
 
 
 if __name__ == "__main__":

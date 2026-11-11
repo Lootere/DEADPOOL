@@ -9,9 +9,11 @@ and async persistence/delivery helpers used by the bot.
 import asyncio
 import hashlib
 import html
+import io
 import logging
 import os
 import re
+import urllib.parse
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -577,6 +579,12 @@ async def resolve_metadata(event: Dict[str, Any], settings: Dict[str, Any]) -> D
         )
     else:
         event["metadata_source"] = source
+        logger.info(
+            "Metadata resolved via %s for %r (poster=%s)",
+            source,
+            clean_metadata_value(event.get("title")),
+            _poster_label(metadata.get("poster")) or "none",
+        )
 
     if handle is not None and cache_key:
         try:
@@ -746,6 +754,20 @@ def build_series_captions(
     return [caption for caption in captions if caption]
 
 
+def _poster_label(poster: Any) -> str:
+    """Log-safe poster identifier: host+path only, never query strings."""
+    value = str(poster or "")
+    if not value:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(value)
+    except Exception:
+        return "invalid"
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return "invalid"
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"[:180]
+
+
 def build_payload(
     owner_id: str,
     kind: str,
@@ -760,11 +782,22 @@ def build_payload(
         captions = [build_movie_caption(events[0], metadata, settings)] if events else []
     poster = ""
     if settings.get("poster_enabled", True):
-        poster = clean_metadata_value((metadata or {}).get("poster")) or clean_metadata_value(
-            settings.get("fallback_poster")
+        poster = (
+            clean_metadata_value((metadata or {}).get("poster"))
+            # A poster stored on the event (manual override / older record) is
+            # still usable when IMDb metadata is disabled or unavailable.
+            or (clean_metadata_value(events[0].get("poster")) if events else "")
+            or clean_metadata_value(settings.get("fallback_poster"))
         )
     if poster and not poster.lower().startswith(("http://", "https://")):
         poster = ""
+    logger.info(
+        "Notification payload %s: poster=%s (metadata_poster=%s fallback=%s)",
+        owner_id,
+        _poster_label(poster) or "none",
+        bool(clean_metadata_value((metadata or {}).get("poster"))),
+        bool(clean_metadata_value(settings.get("fallback_poster"))),
+    )
     return {
         "owner_id": owner_id,
         "kind": kind,
@@ -1077,6 +1110,11 @@ async def _create_deliveries(
         return 0
     created = 0
     now = _now()
+    logger.info(
+        "Storing deliveries for %s with poster=%s",
+        owner_id,
+        _poster_label(payload.get("poster")) or "none",
+    )
     for destination in ("channel", "group"):
         if not settings.get(f"{destination}_enabled"):
             continue
@@ -1245,13 +1283,33 @@ async def _poster_usable(poster: str) -> bool:
         return True
 
 
+async def _poster_image(poster: str) -> Tuple[bytes, str, str]:
+    """Download and validate a poster for re-upload. Never raises."""
+    try:
+        from Lootere.utils.imdb_metadata import fetch_poster_bytes
+
+        data, filename, reason = await fetch_poster_bytes(poster)
+        if not data:
+            logger.info("Poster download failed (%s): %s", _poster_label(poster), reason)
+        return data, filename, reason
+    except Exception as exc:
+        logger.info("Poster download failed (%s): %s", _poster_label(poster), safe_error_text(exc))
+        return b"", "", safe_error_text(exc)
+
+
 async def _deliver(bot, delivery: Dict[str, Any]) -> Any:
     from pyrogram import enums
 
     chat_ref = _chat_ref(delivery.get("chat_id"))
     markup = _build_markup(delivery)
     caption = str(delivery.get("caption") or "")
-    kwargs = {
+    # NOTE: send_photo() does not accept disable_web_page_preview; passing it
+    # raised TypeError and silently forced every notification back to text.
+    photo_kwargs = {
+        "parse_mode": enums.ParseMode.HTML,
+        "reply_markup": markup,
+    }
+    text_kwargs = {
         "parse_mode": enums.ParseMode.HTML,
         "reply_markup": markup,
         "disable_web_page_preview": True,
@@ -1262,16 +1320,51 @@ async def _deliver(bot, delivery: Dict[str, Any]) -> Any:
     if poster and len(caption) > 1024:
         logger.info("Caption too long for a photo caption; sending text instead")
         poster = ""
+    if poster:
+        logger.info(
+            "Sending %s notification photo to %s (poster=%s)",
+            delivery.get("destination_type") or "notification",
+            chat_ref,
+            _poster_label(poster),
+        )
     if poster and await _poster_usable(poster):
         try:
-            return await bot.send_photo(chat_id=chat_ref, photo=poster, caption=caption, **kwargs)
+            return await bot.send_photo(
+                chat_id=chat_ref, photo=poster, caption=caption, **photo_kwargs
+            )
         except Exception as exc:
             # A bad/unsupported poster must never cancel the upload notification.
             # Only FloodWait is surfaced so the retry queue keeps its cooldown.
             if classify_telegram_error(exc) == "flood":
                 raise
-            logger.info("Poster send failed, falling back to text: %s", safe_error_text(exc))
-    return await bot.send_message(chat_id=chat_ref, text=caption, **kwargs)
+            logger.warning(
+                "Poster URL send failed at Telegram stage (%s): %s",
+                delivery.get("destination_type") or "notification",
+                safe_error_text(exc),
+            )
+        data, filename, reason = await _poster_image(poster)
+        if data:
+            try:
+                buffer = io.BytesIO(data)
+                buffer.name = filename or "poster.jpg"
+                return await bot.send_photo(
+                    chat_id=chat_ref, photo=buffer, caption=caption, **photo_kwargs
+                )
+            except Exception as exc:
+                if classify_telegram_error(exc) == "flood":
+                    raise
+                logger.warning(
+                    "Poster upload failed at Telegram stage (%s): %s",
+                    delivery.get("destination_type") or "notification",
+                    safe_error_text(exc),
+                )
+        else:
+            logger.info(
+                "Poster unavailable at download stage (%s): %s",
+                _poster_label(poster),
+                reason or "unknown reason",
+            )
+    return await bot.send_message(chat_id=chat_ref, text=caption, **text_kwargs)
 
 
 async def process_deliveries(bot, limit: int = 20) -> int:

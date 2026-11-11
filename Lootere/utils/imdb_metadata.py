@@ -15,6 +15,7 @@ included when IMDb actually returned it.  All blocking I/O is exposed through
 ``asyncio.to_thread`` so callers never block the bot event loop.
 """
 import asyncio
+import io
 import json
 import re
 import urllib.error
@@ -457,3 +458,123 @@ async def poster_is_usable(url: str, timeout: int = 5) -> Tuple[bool, str]:
     except Exception:
         # Inconclusive validation must not drop an otherwise valid poster.
         return True, ""
+
+
+# ---------------------------------------------------------------------------
+# Poster bytes: download + validate before re-uploading through Telegram.
+# Telegram cannot always fetch a third-party image URL, so a failed URL send
+# is retried with the validated image bytes instead of dropping the poster.
+# ---------------------------------------------------------------------------
+_IMAGE_SIGNATURES = (
+    (b"\xff\xd8\xff", "image/jpeg", "poster.jpg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png", "poster.png"),
+    (b"GIF87a", "image/gif", "poster.gif"),
+    (b"GIF89a", "image/gif", "poster.gif"),
+)
+
+
+def sniff_image_type(data: bytes) -> Tuple[str, str]:
+    """Return ``(mime, filename)`` for a supported image, else ``("", "")``."""
+    if not data:
+        return "", ""
+    for signature, mime, filename in _IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return mime, filename
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp", "poster.webp"
+    return "", ""
+
+
+def _image_size(data: bytes) -> Tuple[int, int]:
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as image:
+            return image.size
+    except Exception:
+        return 0, 0
+
+
+def validate_poster_bytes(data: bytes, content_type: str = "") -> Tuple[bool, str]:
+    """Reject HTML error pages, oversized payloads and non-image bytes."""
+    if not data:
+        return False, "poster download returned no data"
+    if len(data) > MAX_POSTER_BYTES:
+        return False, "poster exceeds Telegram photo limit"
+    declared = str(content_type or "").split(";")[0].strip().lower()
+    if declared and not declared.startswith("image/"):
+        return False, f"poster is not an image ({declared})"
+    mime, _ = sniff_image_type(data)
+    if not mime:
+        return False, "poster bytes are not a supported image"
+    width, height = _image_size(data)
+    if width and height:
+        if width <= 0 or height <= 0:
+            return False, "poster has invalid dimensions"
+        if width > 12000 or height > 12000:
+            return False, "poster dimensions are too large"
+    return True, ""
+
+
+def _prepare_poster_bytes(data: bytes) -> Tuple[bytes, str]:
+    """Return bytes Telegram accepts, converting uncommon formats to JPEG."""
+    mime, filename = sniff_image_type(data)
+    if mime in {"image/jpeg", "image/png"}:
+        return data, filename
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as image:
+            converted = image.convert("RGB")
+            buffer = io.BytesIO()
+            converted.save(buffer, format="JPEG", quality=90)
+            return buffer.getvalue(), "poster.jpg"
+    except Exception:
+        return data, filename or "poster.jpg"
+
+
+def _fetch_poster_bytes_sync(
+    url: str, timeout: int = 10
+) -> Tuple[bytes, str, str]:
+    """Download a poster URL. Returns ``(data, filename, failure_reason)``."""
+    if not str(url or "").startswith(("http://", "https://")):
+        return b"", "", "invalid poster URL"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=max(2, int(timeout))) as response:
+            status = getattr(response, "status", 200)
+            content_type = response.headers.get_content_type() or ""
+            declared_length = response.headers.get("Content-Length")
+            if status and int(status) >= 400:
+                return b"", "", f"poster HTTP {status}"
+            if declared_length:
+                try:
+                    if int(declared_length) > MAX_POSTER_BYTES:
+                        return b"", "", "poster exceeds Telegram photo limit"
+                except ValueError:
+                    pass
+            data = response.read(MAX_POSTER_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        return b"", "", f"poster HTTP {exc.code}"
+    except urllib.error.URLError as exc:
+        return b"", "", f"poster unreachable: {exc.reason}"
+    except Exception as exc:  # socket timeouts, TLS errors, ...
+        return b"", "", f"poster download error: {exc}"
+    usable, reason = validate_poster_bytes(data, content_type)
+    if not usable:
+        return b"", "", reason
+    prepared, filename = _prepare_poster_bytes(data)
+    return prepared, filename, ""
+
+
+async def fetch_poster_bytes(url: str, timeout: int = 10) -> Tuple[bytes, str, str]:
+    """Async wrapper around the poster download/validation helper."""
+    timeout = max(3, int(timeout or 10))
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_fetch_poster_bytes_sync, url, timeout), timeout=timeout + 1
+        )
+    except asyncio.TimeoutError:
+        return b"", "", "poster download timeout"
+    except Exception as exc:
+        return b"", "", f"poster download error: {exc}"
