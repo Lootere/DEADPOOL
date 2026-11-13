@@ -98,7 +98,7 @@ class CaptionTests(unittest.TestCase):
         event = engine.build_event(FakeMedia("Example.Movie.2025.1080p.Hindi.mkv"))
         caption = engine.build_movie_caption(event, self.full_metadata(), engine.DEFAULT_SETTINGS)
         for value in (
-            "NEW MOVIE UPLOADED",
+            "NEW MOVIE DROP",
             "Example Movie (2025)",
             "7.8/10",
             "Action, Thriller",
@@ -136,7 +136,7 @@ class CaptionTests(unittest.TestCase):
         ]
         captions = engine.build_series_captions(events, {}, engine.DEFAULT_SETTINGS)
         text = "\n".join(captions)
-        self.assertIn("NEW SERIES EPISODES ADDED", text)
+        self.assertIn("NEW SERIES EPISODES DROP", text)
         self.assertIn("Akka", text)
         for index in range(1, 6):
             self.assertIn(f"E{index:02d} S01", text)

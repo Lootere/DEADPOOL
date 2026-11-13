@@ -91,7 +91,14 @@ def _menu_text(settings) -> str:
         f"Group: <code>{group}</code> — {_status(bool(settings.get('group_enabled') and settings.get('group_id')))}\n\n"
         f"GET NOW text: <b>{settings.get('button_text')}</b>\n"
         f"GET NOW URL: <code>{button_url}</code>\n"
-        f"Series batch window: <b>{int(settings.get('batch_window_seconds') or 300)}s</b>\n\n"
+        f"Series batch window: <b>{int(settings.get('batch_window_seconds') or 300)}s</b>\n"
+        f"Movie grouping: {_status(bool(settings.get('movie_quality_grouping')))} "
+        f"(quiet {int(settings.get('movie_quiet_window_seconds') or 60)}s / max "
+        f"{int(settings.get('movie_max_wait_seconds') or 120)}s)\n"
+        f"Series grouping: {_status(bool(settings.get('series_episode_grouping')))} "
+        f"(quiet {int(settings.get('series_quiet_window_seconds') or 60)}s / max "
+        f"{int(settings.get('series_max_wait_seconds') or 120)}s)\n"
+        f"Live update policy: <b>{settings.get('late_episode_update_policy')}</b>\n\n"
         f"Weekly digest: {_status(bool(settings.get('digest_enabled')))}\n"
         f"Digest time: <b>Sunday {settings.get('digest_time')}</b>\n"
         f"Timezone: <b>{settings.get('timezone')}</b>\n"
@@ -125,6 +132,22 @@ def _menu_markup(settings) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("Batch Window", callback_data="autonotif#set_batch"),
+        ],
+        [
+            InlineKeyboardButton(
+                "Movie Group ON/OFF", callback_data="autonotif#toggle_movie_group"
+            ),
+            InlineKeyboardButton(
+                "Series Group ON/OFF", callback_data="autonotif#toggle_series_group"
+            ),
+        ],
+        [
+            InlineKeyboardButton("Movie Quiet", callback_data="autonotif#set_movie_quiet"),
+            InlineKeyboardButton("Series Quiet", callback_data="autonotif#set_series_quiet"),
+        ],
+        [
+            InlineKeyboardButton("Max Wait", callback_data="autonotif#set_max_wait"),
+            InlineKeyboardButton("Live Update", callback_data="autonotif#toggle_live_update"),
         ],
         [InlineKeyboardButton(digest, callback_data="autonotif#toggle_digest")],
         [
@@ -257,6 +280,32 @@ async def auto_notification_set(client, message):
         if not 30 <= seconds <= 3600:
             return await message.reply_text("Batch window must be between 30 and 3600 seconds.")
         await engine.save_settings(message.from_user.id, batch_window_seconds=seconds)
+    elif key in {"movie_quiet", "series_quiet"}:
+        try:
+            seconds = int(value)
+        except (TypeError, ValueError):
+            return await message.reply_text("Quiet window must be a number of seconds.")
+        if not 10 <= seconds <= 3600:
+            return await message.reply_text("Quiet window must be between 10 and 3600 seconds.")
+        await engine.save_settings(
+            message.from_user.id, **{f"{key}_window_seconds": seconds}
+        )
+    elif key in {"max_wait", "movie_max_wait", "series_max_wait"}:
+        try:
+            seconds = int(value)
+        except (TypeError, ValueError):
+            return await message.reply_text("Max wait must be a number of seconds.")
+        if not 20 <= seconds <= 3600:
+            return await message.reply_text("Max wait must be between 20 and 3600 seconds.")
+        field = "max_wait_seconds" if key == "max_wait" else f"{key}_seconds"
+        if key == "max_wait":
+            await engine.save_settings(
+                message.from_user.id,
+                movie_max_wait_seconds=seconds,
+                series_max_wait_seconds=seconds,
+            )
+        else:
+            await engine.save_settings(message.from_user.id, **{field: seconds})
     elif key == "digest_time":
         if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", value):
             return await message.reply_text("Digest time must be HH:MM (24-hour), e.g. 21:00.")
@@ -374,6 +423,40 @@ async def auto_notification_callback(client, query: CallbackQuery):
         await query.answer()
         return await query.message.reply_text(
             _prompt("batch", "300", "Set series batch window (seconds)")
+        )
+    elif action == "toggle_movie_group":
+        settings = await engine.save_settings(
+            query.from_user.id,
+            movie_quality_grouping=not bool(settings.get("movie_quality_grouping")),
+        )
+    elif action == "toggle_series_group":
+        settings = await engine.save_settings(
+            query.from_user.id,
+            series_episode_grouping=not bool(settings.get("series_episode_grouping")),
+        )
+    elif action == "toggle_live_update":
+        current = settings.get("late_episode_update_policy") or "edit"
+        settings = await engine.save_settings(
+            query.from_user.id,
+            late_episode_update_policy="edit" if current != "edit" else "update_message",
+            late_quality_update_policy="edit" if current != "edit" else "update_message",
+        )
+    elif action == "set_movie_quiet":
+        await query.answer()
+        return await query.message.reply_text(
+            _prompt("movie_quiet", "60", "Movie quiet window (seconds, 10-3600)")
+        )
+    elif action == "set_series_quiet":
+        await query.answer()
+        return await query.message.reply_text(
+            _prompt("series_quiet", "60", "Series quiet window (seconds, 10-3600)")
+        )
+    elif action == "set_max_wait":
+        await query.answer()
+        return await query.message.reply_text(
+            "<b>Set absolute maximum batch wait</b>\n\n"
+            "Send:\n<code>/autonotif_set max_wait 120</code>\n\n"
+            "Applies to both movies and series. Must be longer than the quiet window."
         )
     elif action == "set_digest_time":
         await query.answer()

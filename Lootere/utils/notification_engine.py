@@ -28,8 +28,15 @@ MAX_CAPTION_LENGTH = 3900
 MAX_MESSAGE_LENGTH = 3800
 DEFAULT_BATCH_WINDOW = 300
 MAX_BATCH_WINDOW = 3600
+# Feature 46 upgrade: responsive grouping. A new upload restarts the quiet
+# window (default 60s); the batch is forced out after max wait (default 120s)
+# no matter how many uploads keep arriving.
+DEFAULT_QUIET_WINDOW = 60
+DEFAULT_MAX_WAIT = 120
+MIN_QUIET_WINDOW = 10
+MIN_MAX_WAIT = 20
 MAX_DELIVERY_ATTEMPTS = 5
-WORKER_INTERVAL = 15
+WORKER_INTERVAL = 5
 # Hard caps so a slow/stalled Telegram photo upload can never wedge the single
 # delivery worker. Text delivery is attempted as soon as the poster attempt
 # ends, whether it succeeded, failed or timed out.
@@ -46,18 +53,20 @@ AUDIT_COLLECTION = "notification_audit_log"
 MOVIE_QUALITY_BATCHES_COLLECTION = "movie_quality_batches"
 
 DEFAULT_MOVIE_TEMPLATE = (
-    "<b>🔥 NEW MOVIE UPLOADED</b>\n\n"
+    "<b>🎬 NEW MOVIE DROP</b>\n\n"
     "<b>{title_line}</b>\n\n"
     "{rating_line}{imdb_line}{genre_line}{language_line}{quality_line}"
     "{runtime_line}{certification_line}{description_line}"
 )
 
 DEFAULT_SERIES_TEMPLATE = (
-    "<b>📺 NEW SERIES EPISODES ADDED</b>\n\n"
+    "<b>📺 NEW SERIES EPISODES DROP</b>\n\n"
     "<b>{title_line}</b>\n\n"
     "{rating_line}{imdb_line}{genre_line}{language_line}{quality_line}"
-    "{runtime_line}{description_line}"
-    "{new_episodes_block}\n<b>Total New Episodes: {episode_count}</b>"
+    "{runtime_line}{new_episodes_block}\n\n"
+    "<b>TOTAL NEW EPISODES: {episode_count}</b>\n"
+    "<b>TOTAL FILE VERSIONS: {version_count}</b>\n"
+    "{description_line}"
 )
 
 DEFAULT_DIGEST_TEMPLATE = (
@@ -107,6 +116,13 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "series_episode_grouping": True,
     "movie_batch_window_seconds": DEFAULT_BATCH_WINDOW,
     "series_batch_window_seconds": DEFAULT_BATCH_WINDOW,
+    # Responsive quiet-window / hard max wait (seconds). The quiet window is
+    # restarted by every new matching upload; max_wait is measured from the
+    # first event in the batch and can never be extended.
+    "movie_quiet_window_seconds": DEFAULT_QUIET_WINDOW,
+    "movie_max_wait_seconds": DEFAULT_MAX_WAIT,
+    "series_quiet_window_seconds": DEFAULT_QUIET_WINDOW,
+    "series_max_wait_seconds": DEFAULT_MAX_WAIT,
     "late_quality_update_policy": "edit",
     "late_episode_update_policy": "edit",
     "description_length": "compact",
@@ -276,6 +292,33 @@ def escape_text(value: Any) -> str:
 
 def series_key(title: Any) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", str(title or "").casefold()).split())
+
+
+def logical_movie_id(event: Dict[str, Any]) -> str:
+    """Stable identity for one movie, independent of quality/codec/tags.
+
+    Never uses the raw filename: resolution, codec, audio, source tag and
+    release-group tokens are all stripped by the parser before the title is
+    produced, and the year/content type are appended so genuinely different
+    releases (different year, different language version) stay distinct.
+    """
+    title = clean_metadata_value(event.get("title")) or _file_stem(event.get("file_name", ""))
+    year = clean_metadata_value(event.get("year"))
+    language = clean_metadata_value(event.get("language"))
+    parts = ["movie", series_key(title), year]
+    # A distinct language version is separate content, not a quality variant.
+    if language:
+        parts.append(series_key(language.split("+")[0]))
+    return "|".join(part for part in parts if part)
+
+
+def logical_series_id(event: Dict[str, Any]) -> str:
+    """Stable identity for one series season (episodes differ only by episode)."""
+    title = clean_metadata_value(event.get("title")) or _file_stem(event.get("file_name", ""))
+    year = clean_metadata_value(event.get("year"))
+    season = event.get("season")
+    season_token = f"s{int(season):02d}" if season is not None else "s00"
+    return "|".join(["series", series_key(title), year, season_token])
 
 
 def _file_stem(file_name: str) -> str:
@@ -692,20 +735,58 @@ def _display_title(event: Dict[str, Any], metadata: Dict[str, Any]) -> str:
     )
 
 
+def description_limit(settings: Dict[str, Any]) -> int:
+    """Compact by default; never longer than the caption limit."""
+    mode = str(settings.get("description_length") or "compact").lower()
+    if mode == "short":
+        return 160
+    if mode == "long":
+        return 600
+    return 260
+
+
+def _merge_qualities(event: Dict[str, Any], events: Sequence[Dict[str, Any]]) -> str:
+    """Distinct quality labels for one logical item, widest first."""
+    values = {clean_metadata_value(event.get("quality"))}
+    for other in events:
+        if other is event:
+            continue
+        # Same logical movie/season -> collect quality variants.
+        if (other.get("logical_id") and other.get("logical_id") == event.get("logical_id")):
+            values.add(clean_metadata_value(other.get("quality")))
+    ordered = sorted({value for value in values if value}, key=_quality_sort_key, reverse=True)
+    return " • ".join(ordered)
+
+
 def build_movie_caption(
-    event: Dict[str, Any], metadata: Optional[Dict[str, Any]], settings: Dict[str, Any]
+    event: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]],
+    settings: Dict[str, Any],
+    all_events: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> str:
     metadata = metadata or {}
+    all_events = all_events or [event]
     title = _display_title(event, metadata)
     year = clean_metadata_value(event.get("year")) or clean_metadata_value(metadata.get("year"))
     rating = clean_metadata_value(metadata.get("rating"))
     imdb_id = clean_metadata_value(metadata.get("imdb_id"))
     genre = clean_metadata_value(metadata.get("genres"))
     language = _pick_language(event, metadata)
-    quality = clean_metadata_value(event.get("quality"))
+    quality = _merge_qualities(event, all_events) or clean_metadata_value(event.get("quality"))
     runtime = clean_metadata_value(metadata.get("runtime"))
     certification = clean_metadata_value(metadata.get("certificates"))
-    description = _truncate_text(clean_metadata_value(metadata.get("plot")), 400)
+    description = _truncate_text(
+        clean_metadata_value(metadata.get("plot")), description_limit(settings)
+    )
+    version_count = sum(
+        1
+        for item in all_events
+        if item.get("quality")
+        and (
+            not item.get("logical_id")
+            or item.get("logical_id") == event.get("logical_id")
+        )
+    )
 
     title_line = escape_text(title) + (f" ({escape_text(year)})" if year else "")
     values = {
@@ -721,21 +802,43 @@ def build_movie_caption(
         "certification": escape_text(certification),
         "description": escape_text(description),
         "size": clean_metadata_value(event.get("file_size")),
+        "version_count": str(version_count),
         "rating_line": f"⭐ IMDb: {escape_text(rating)}/10\n" if rating else "",
         "imdb_line": f"🆔 IMDb: {escape_text(imdb_id)}\n" if imdb_id else "",
-        "genre_line": f"🎬 Genre: {escape_text(genre)}\n" if genre else "",
+        "genre_line": f"🎭 Genre: {escape_text(genre)}\n" if genre else "",
         "language_line": f"🌐 Language: {escape_text(language)}\n" if language else "",
-        "quality_line": f"🎞️ Quality: {escape_text(quality)}\n" if quality else "",
+        "quality_line": (
+            f"🎞️ <b>AVAILABLE QUALITIES:</b>\n{escape_text(quality)}\n" if quality else ""
+        ),
         "runtime_line": f"⏱️ Runtime: {escape_text(runtime)}\n" if runtime else "",
         "certification_line": (
             f"🔞 Certification: {escape_text(certification)}\n" if certification else ""
         ),
         "description_line": (
-            f"📝 Description:\n{escape_text(description)}\n\n" if description else ""
+            f"\n🍿 <b>THE STORY</b>\n<i>{escape_text(description)}</i>\n\n"
+            if description
+            else ""
         ),
     }
     template = settings.get("movie_caption_template") or DEFAULT_MOVIE_TEMPLATE
     return tidy_caption(_safe_format(template, values))
+
+
+def episode_variant_map(events: Sequence[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """Map each episode to its distinct available qualities.
+
+    Quality is an attribute of the episode file, never a separate episode.
+    """
+    mapping: Dict[str, List[str]] = {}
+    for event in events:
+        code = str(event.get("episode_code") or "").strip()
+        if not code:
+            continue
+        bucket = mapping.setdefault(code, [])
+        quality = clean_metadata_value(event.get("quality"))
+        if quality and quality not in bucket:
+            bucket.append(quality)
+    return mapping
 
 
 def build_series_captions(
@@ -754,15 +857,20 @@ def build_series_captions(
     genre = clean_metadata_value(metadata.get("genres"))
     language = _pick_language(first, metadata)
     runtime = clean_metadata_value(metadata.get("runtime"))
-    description = _truncate_text(clean_metadata_value(metadata.get("plot")), 400)
+    description = _truncate_text(
+        clean_metadata_value(metadata.get("plot")), description_limit(settings)
+    )
     season = first.get("season")
     qualities = sorted(
         {clean_metadata_value(event.get("quality")) for event in events if event.get("quality")},
         key=_quality_sort_key,
+        reverse=True,
     )
-    quality_text = " / ".join(qualities)
-    episode_codes = [event.get("episode_code") for event in events if event.get("episode_code")]
-    total_episodes = len(episode_codes) or len(events)
+    quality_text = " • ".join(qualities)
+    variants = episode_variant_map(events)
+    ordered_codes = sorted(variants, key=episode_sort_key)
+    total_episodes = len(ordered_codes) or len({e.get("episode_code") for e in events})
+    total_versions = sum(len(set(items)) for items in variants.values()) or len(events)
 
     title_line = escape_text(title)
     if year:
@@ -770,10 +878,17 @@ def build_series_captions(
     if season is not None:
         title_line += f" — Season {int(season)}"
 
-    chunks = chunk_episodes(episode_codes)
+    def _episode_line(code: str) -> str:
+        line = f"{escape_text(code)}"
+        items = variants.get(code) or []
+        if items:
+            line += " — " + escape_text(", ".join(items))
+        return f"• {line}"
+
+    chunks = chunk_episodes(ordered_codes)
     captions: List[str] = []
     for chunk in chunks:
-        block_lines = ["<b>New Episodes:</b>"] + [f"• {escape_text(code)}" for code in chunk]
+        block_lines = ["<b>📦 NEW EPISODES:</b>"] + [_episode_line(code) for code in chunk]
         values = {
             "title": escape_text(title),
             "title_line": title_line,
@@ -785,19 +900,26 @@ def build_series_captions(
             "quality": escape_text(quality_text),
             "qualities": escape_text(quality_text),
             "season": "" if season is None else str(int(season)),
-            "episode_list": "\n".join(f"• {escape_text(code)}" for code in chunk),
+            "episode_list": "\n".join(_episode_line(code) for code in chunk),
             "new_episodes_block": "\n".join(block_lines),
             "episode_count": str(total_episodes),
+            "version_count": str(total_versions),
             "runtime": escape_text(runtime),
             "description": escape_text(description),
             "rating_line": f"⭐ IMDb: {escape_text(rating)}/10\n" if rating else "",
             "imdb_line": f"🆔 IMDb: {escape_text(imdb_id)}\n" if imdb_id else "",
-            "genre_line": f"🎬 Genre: {escape_text(genre)}\n" if genre else "",
+            "genre_line": f"🎭 Genre: {escape_text(genre)}\n" if genre else "",
             "language_line": f"🌐 Language: {escape_text(language)}\n" if language else "",
-            "quality_line": f"🎞️ Quality: {escape_text(quality_text)}\n" if quality_text else "",
+            "quality_line": (
+                f"🎞️ <b>AVAILABLE QUALITIES:</b>\n{escape_text(quality_text)}\n"
+                if quality_text
+                else ""
+            ),
             "runtime_line": f"⏱️ Runtime: {escape_text(runtime)}\n" if runtime else "",
             "description_line": (
-                f"📝 Description:\n{escape_text(description)}\n\n" if description else ""
+                f"\n🍿 <b>ABOUT THE SERIES</b>\n<i>{escape_text(description)}</i>\n\n"
+                if description
+                else ""
             ),
         }
         template = settings.get("series_caption_template") or DEFAULT_SERIES_TEMPLATE
@@ -837,7 +959,9 @@ def build_payload(
     if kind == "series":
         captions = build_series_captions(events, metadata, settings)
     else:
-        captions = [build_movie_caption(events[0], metadata, settings)] if events else []
+        captions = (
+            [build_movie_caption(events[0], metadata, settings, events)] if events else []
+        )
     poster = ""
     if settings.get("poster_enabled", True):
         poster = (
@@ -1079,11 +1203,46 @@ async def ensure_notification_indexes() -> None:
         await handle[DELIVERIES_COLLECTION].create_index("owner_id")
         await handle[BATCHES_COLLECTION].create_index("batch_id", unique=True)
         await handle[BATCHES_COLLECTION].create_index([("state", 1), ("window_end", 1)])
+        await handle[BATCHES_COLLECTION].create_index("logical_id")
+        await handle[BATCHES_COLLECTION].create_index(
+            [("logical_id", 1), ("state", 1)]
+        )
         await handle[DIGESTS_COLLECTION].create_index("digest_id", unique=True)
         await handle[DIGESTS_COLLECTION].create_index("period_key", unique=True)
         await handle[METADATA_COLLECTION].create_index("cache_key", unique=True)
+        await handle[EVENTS_COLLECTION].create_index("logical_id")
     except Exception:
         logger.exception("Failed to ensure Feature 46 indexes")
+
+
+def _resolve_window(settings: Dict[str, Any], kind: str) -> Tuple[int, int]:
+    """Return (quiet_window, max_wait) in seconds for a movie or series batch.
+
+    The legacy ``batch_window_seconds`` value is still honoured as the quiet
+    window when no per-kind override has been configured, so existing installs
+    keep their current behaviour until an admin opts into the new controls.
+    """
+    quiet_key = f"{kind}_quiet_window_seconds"
+    max_key = f"{kind}_max_wait_seconds"
+    quiet_raw = settings.get(quiet_key)
+    if quiet_raw is None:
+        quiet_raw = settings.get("batch_window_seconds", DEFAULT_QUIET_WINDOW)
+    try:
+        quiet = int(quiet_raw)
+    except (TypeError, ValueError):
+        quiet = DEFAULT_QUIET_WINDOW
+    try:
+        max_wait = int(settings.get(max_key) or DEFAULT_MAX_WAIT)
+    except (TypeError, ValueError):
+        max_wait = DEFAULT_MAX_WAIT
+    quiet = max(0, min(MAX_BATCH_WINDOW, quiet))
+    if quiet == 0:
+        # Immediate publication (explicitly configured, or legacy 0).
+        return 0, 0
+    quiet = max(MIN_QUIET_WINDOW, quiet)
+    # A max wait shorter than the quiet window would publish immediately.
+    max_wait = max(quiet + 5, min(MAX_BATCH_WINDOW, max_wait))
+    return quiet, max_wait
 
 
 async def record_upload_event(media: Any, source_db: str = "primary") -> bool:
@@ -1096,66 +1255,149 @@ async def record_upload_event(media: Any, source_db: str = "primary") -> bool:
         if handle is None:
             return False
         event = build_event(media, source_db)
-        if event.get("category") == "series" and event.get("episode_code"):
+        category = event.get("category")
+        if category == "series" and event.get("episode_code"):
+            event["logical_id"] = logical_series_id(event)
+            event["quality_variants"] = [clean_metadata_value(event.get("quality"))] if event.get(
+                "quality"
+            ) else []
             event["state"] = "BATCH_PENDING"
+        elif category == "movie":
+            event["logical_id"] = logical_movie_id(event)
+            event["quality_variants"] = [clean_metadata_value(event.get("quality"))] if event.get(
+                "quality"
+            ) else []
+            event["state"] = "BATCH_PENDING" if settings.get("movie_quality_grouping") else "PENDING"
+        else:
+            event["logical_id"] = ""
+            event["quality_variants"] = []
         result = await handle[EVENTS_COLLECTION].update_one(
             {"event_id": event["event_id"]}, {"$setOnInsert": event}, upsert=True
         )
         if not getattr(result, "upserted_id", None):
+            # Duplicate physical file: already indexed, never a second event.
+            logger.info(
+                "Feature 46 duplicate event ignored: %r (%s)",
+                event.get("file_name"),
+                event.get("event_id"),
+            )
             return False
-        if event.get("category") == "series" and event.get("episode_code"):
-            await _enqueue_series_event(event, settings)
+        logger.info(
+            "Feature 46 event created: %s | category=%s title=%r season=%s episode=%s quality=%s",
+            event["event_id"],
+            category,
+            event.get("title"),
+            event.get("season"),
+            event.get("episode_code"),
+            event.get("quality"),
+        )
+        if event["state"] == "BATCH_PENDING":
+            # A logical item may already be published: then this upload is a
+            # late arrival and must update the existing message, not spawn a
+            # new notification.
+            open_batch = await handle[BATCHES_COLLECTION].find_one(
+                {"logical_id": event["logical_id"], "state": {"$in": ["OPEN", "PROCESSING"]}}
+            )
+            if open_batch is not None:
+                await _enqueue_batch_event(
+                    event, settings, "series" if category == "series" else "movie"
+                )
+            else:
+                await handle[EVENTS_COLLECTION].update_one(
+                    {"event_id": event["event_id"]},
+                    {"$set": {"state": "LATE_PENDING"}},
+                )
+                await _flag_late_arrival(event)
         return True
     except Exception:
         logger.exception("Failed to register Feature 46 upload event")
         return False
 
 
-async def _enqueue_series_event(event: Dict[str, Any], settings: Dict[str, Any]) -> None:
+async def _enqueue_batch_event(
+    event: Dict[str, Any], settings: Dict[str, Any], kind: str
+) -> None:
+    """Add an event to its logical batch.
+
+    The quiet window is restarted by every new upload (``window_end`` moves
+    forward), but ``max_window_end`` is fixed at batch creation so continuous
+    uploads can never postpone publication indefinitely.
+    """
     handle = _database()
     if handle is None:
         return
-    batch_window = int(settings.get("batch_window_seconds") or DEFAULT_BATCH_WINDOW)
-    batch_window = max(30, min(MAX_BATCH_WINDOW, batch_window))
-    key = event.get("series_key")
+    quiet, max_wait = _resolve_window(settings, kind)
+    logical_id = event.get("logical_id")
     season = event.get("season")
     now = _now()
-    query = {"series_key": key, "season": season, "state": "OPEN"}
+    series_key_value = event.get("series_key")
+    query = {
+        "logical_id": logical_id,
+        "state": "OPEN",
+    }
     existing = await handle[BATCHES_COLLECTION].find_one(query)
     if existing:
-        cap = existing.get("max_window_end") or (now + timedelta(seconds=batch_window))
-        window_end = min(now + timedelta(seconds=batch_window), cap)
+        cap = existing.get("max_window_end") or (now + timedelta(seconds=max_wait))
+        # Restart the quiet window on new activity, but never past the cap.
+        window_end = min(now + timedelta(seconds=quiet), cap)
         await handle[BATCHES_COLLECTION].update_one(
             {"_id": existing["_id"]},
             {
                 "$addToSet": {"event_ids": event["event_id"]},
-                "$set": {"window_end": window_end, "updated_at": now},
+                "$set": {
+                    "window_end": window_end,
+                    "updated_at": now,
+                    "last_event_at": now,
+                    "event_count": len(existing.get("event_ids") or []) + 1,
+                },
             },
+        )
+        logger.info(
+            "Feature 46 batch %s updated: %s (quiet window -> +%ss, cap %s)",
+            existing.get("batch_id"),
+            logical_id,
+            quiet,
+            cap.isoformat() if hasattr(cap, "isoformat") else cap,
         )
         return
     batch_id = "bat_" + hashlib.sha256(
-        f"{key}|{season}|{now.timestamp()}".encode()
+        f"{logical_id}|{now.timestamp()}".encode()
     ).hexdigest()[:20]
     doc = {
         "batch_id": batch_id,
-        "series_key": key,
+        "logical_id": logical_id,
+        "kind": kind,
+        "series_key": series_key_value,
         "series_title": event.get("title"),
         "season": season,
         "event_ids": [event["event_id"]],
         "state": "OPEN",
-        "window_end": now + timedelta(seconds=batch_window),
-        "max_window_end": now + timedelta(seconds=max(batch_window * 6, 1800)),
+        "window_end": now + timedelta(seconds=quiet),
+        "max_window_end": now + timedelta(seconds=max_wait),
+        "last_event_at": now,
+        "event_count": 1,
+        "revision": 0,
+        "message_ids": {},
         "created_at": now,
         "updated_at": now,
     }
     try:
         await handle[BATCHES_COLLECTION].insert_one(doc)
+        logger.info(
+            "Feature 46 batch created: %s for %s (%s quiet=%ss max_wait=%ss)",
+            batch_id,
+            logical_id,
+            kind,
+            quiet,
+            max_wait,
+        )
     except Exception:
+        # Lost a race with a concurrent indexing worker: attach to the winner.
         await handle[BATCHES_COLLECTION].update_one(
             query,
             {
                 "$addToSet": {"event_ids": event["event_id"]},
-                "$set": {"updated_at": now},
+                "$set": {"updated_at": now, "last_event_at": now},
             },
         )
 
@@ -1255,20 +1497,34 @@ async def process_pending_events(bot=None, limit: int = 20) -> int:
 
 
 async def process_due_batches(bot=None, limit: int = 10) -> int:
+    """Finalize batches whose quiet window expired or whose max wait was hit.
+
+    A batch already published once is never re-published here; late arrivals are
+    handled by ``process_late_updates`` so an episode can never be silently
+    dropped and no duplicate notification is ever created.
+    """
     handle = _database()
     if handle is None:
         return 0
     settings = await get_settings()
     processed = 0
+    now = _now()
     for _ in range(limit):
         batch = await handle[BATCHES_COLLECTION].find_one_and_update(
-            {"state": "OPEN", "window_end": {"$lte": _now()}},
-            {"$set": {"state": "PROCESSING", "processing_started_at": _now()}},
+            {
+                "state": "OPEN",
+                "$or": [
+                    {"window_end": {"$lte": now}},
+                    {"max_window_end": {"$lte": now}},
+                ],
+            },
+            {"$set": {"state": "PROCESSING", "processing_started_at": now}},
             sort=[("window_end", 1)],
             return_document=True,
         )
         if not batch:
             break
+        kind = batch.get("kind") or ("series" if batch.get("season") is not None else "movie")
         try:
             event_ids = batch.get("event_ids") or []
             events = []
@@ -1283,7 +1539,11 @@ async def process_due_batches(bot=None, limit: int = 10) -> int:
                 continue
             metadata = await resolve_metadata(events[0], settings)
             payload = build_payload(
-                batch["batch_id"], "series", events, metadata, settings, bot
+                batch["batch_id"], kind, events, metadata, settings, bot
+            )
+            revision = int(batch.get("revision") or 0) + 1
+            episode_count = (
+                len(episode_variant_map(events)) if kind == "series" else len(events)
             )
             await handle[BATCHES_COLLECTION].update_one(
                 {"_id": batch["_id"]},
@@ -1294,7 +1554,8 @@ async def process_due_batches(bot=None, limit: int = 10) -> int:
                         "metadata_failed": not bool(metadata),
                         "metadata_source": events[0].get("metadata_source") or "",
                         "metadata_error": events[0].get("metadata_error") or "",
-                        "episode_count": len(events),
+                        "episode_count": episode_count,
+                        "revision": revision,
                         "updated_at": _now(),
                     }
                 },
@@ -1302,14 +1563,175 @@ async def process_due_batches(bot=None, limit: int = 10) -> int:
             for event in events:
                 await _mark_event_state(event["event_id"], "BATCHED", batch_id=batch["batch_id"])
             await _create_deliveries(batch["batch_id"], payload, settings)
+            logger.info(
+                "Feature 46 batch finalized: %s | events=%s episodes=%s revision=%s",
+                batch.get("batch_id"),
+                len(events),
+                episode_count,
+                revision,
+            )
+            # Deliver in the same cycle: a finalized batch must not wait for an
+            # extra worker tick before the notification goes out.
+            await process_deliveries(bot)
             processed += 1
         except Exception:
-            logger.exception("Failed to prepare series batch %s", batch.get("batch_id"))
+            logger.exception("Failed to prepare batch %s", batch.get("batch_id"))
             await handle[BATCHES_COLLECTION].update_one(
                 {"_id": batch["_id"]},
                 {"$set": {"state": "FAILED", "last_error": "batch build failed"}},
             )
     return processed
+
+
+async def process_late_updates(bot=None, limit: int = 10) -> int:
+    """Attach arrivals that landed after their batch was published.
+
+    The existing Telegram message is edited in place (one message per logical
+    batch per destination). Editing is preferred; if it is impossible the
+    delivery is re-queued as a new revision instead of spawning a fresh
+    notification per quality/episode.
+    """
+    handle = _database()
+    if handle is None:
+        return 0
+    settings = await get_settings()
+    if bot is None:
+        return 0
+    processed = 0
+    now = _now()
+    for _ in range(limit):
+        batch = await handle[BATCHES_COLLECTION].find_one_and_update(
+            {"state": "PUBLISHED", "has_late_arrivals": True, "late_state": {"$ne": "PROCESSING"}},
+            {"$set": {"late_state": "PROCESSING"}},
+            sort=[("updated_at", 1)],
+            return_document=True,
+        )
+        if not batch:
+            break
+        try:
+            event_ids = batch.get("event_ids") or []
+            cursor = handle[EVENTS_COLLECTION].find({"event_id": {"$in": event_ids}})
+            events = [event async for event in cursor]
+            if not events:
+                await handle[BATCHES_COLLECTION].update_one(
+                    {"_id": batch["_id"]},
+                    {"$set": {"late_state": "IDLE", "has_late_arrivals": False}},
+                )
+                continue
+            kind = batch.get("kind") or "series"
+            metadata = await resolve_metadata(events[0], settings)
+            payload = build_payload(batch["batch_id"], kind, events, metadata, settings, bot)
+            revision = int(batch.get("revision") or 0) + 1
+            edited = await _edit_existing_deliveries(
+                batch, payload, settings, bot, revision
+            )
+            if not edited:
+                # No message to edit (never sent, or Telegram refused): fall
+                # back to one controlled update delivery, never per-file spam.
+                await _create_deliveries(
+                    f"{batch['batch_id']}_r{revision}", payload, settings
+                )
+            await handle[BATCHES_COLLECTION].update_one(
+                {"_id": batch["_id"]},
+                {
+                    "$set": {
+                        "revision": revision,
+                        "payload": payload,
+                        "late_state": "IDLE",
+                        "has_late_arrivals": False,
+                        "updated_at": _now(),
+                    }
+                },
+            )
+            logger.info(
+                "Feature 46 late update applied: %s revision=%s edited_destinations=%s",
+                batch.get("batch_id"),
+                revision,
+                edited,
+            )
+            processed += 1
+        except Exception:
+            logger.exception("Failed to apply late update for %s", batch.get("batch_id"))
+            await handle[BATCHES_COLLECTION].update_one(
+                {"_id": batch["_id"]},
+                {"$set": {"late_state": "IDLE", "last_error": "late update failed"}},
+            )
+    return processed
+
+
+async def _edit_existing_deliveries(
+    batch: Dict[str, Any],
+    payload: Dict[str, Any],
+    settings: Dict[str, Any],
+    bot,
+    revision: int,
+) -> List[str]:
+    """Edit each destination's already-sent message. Returns updated destinations."""
+    handle = _database()
+    if handle is None:
+        return []
+    from pyrogram import enums
+    from pyrogram.errors import MessageNotModified
+
+    message_ids = batch.get("message_ids") or {}
+    updated: List[str] = []
+    captions = payload.get("captions") or []
+    for destination in ("channel", "group"):
+        message_id = message_ids.get(destination)
+        if not message_id or not captions:
+            continue
+        chat_ref = _chat_ref(settings.get(f"{destination}_id"))
+        if not chat_ref:
+            continue
+        caption = captions[0]
+        markup = _build_markup(
+            {
+                "button_url": payload.get("button_url"),
+                "button_text": payload.get("button_text"),
+            }
+        )
+        try:
+            await bot.edit_message_caption(
+                chat_id=chat_ref,
+                message_id=int(message_id),
+                caption=caption,
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=markup,
+            )
+            await handle[DELIVERIES_COLLECTION].update_one(
+                {
+                    "owner_id": batch["batch_id"],
+                    "destination_type": destination,
+                },
+                {
+                    "$set": {
+                        "caption": caption,
+                        "revision": revision,
+                        "status": "SENT",
+                        "updated_at": _now(),
+                    }
+                },
+            )
+            updated.append(destination)
+        except MessageNotModified:
+            updated.append(destination)
+        except Exception as exc:
+            category = classify_telegram_error(exc)
+            logger.warning(
+                "Feature 46 live edit failed (%s/%s, %s): %s",
+                batch.get("batch_id"),
+                destination,
+                category,
+                safe_error_text(exc),
+            )
+            if category == "permanent":
+                # Message is gone or not editable: drop the stale id so the
+                # fallback path records a new one instead of retrying forever.
+                message_ids.pop(destination, None)
+                await handle[BATCHES_COLLECTION].update_one(
+                    {"_id": batch["_id"]}, {"$set": {"message_ids": message_ids}}
+                )
+    return updated
 
 
 def _build_markup(delivery: Dict[str, Any]):
@@ -1565,8 +1987,63 @@ async def process_deliveries(bot, limit: int = 20) -> int:
                 }
             },
         )
+        # Remember the real Telegram message id per destination so late
+        # arrivals can edit this exact message instead of posting a new one.
+        await _record_message_id(
+            delivery.get("owner_id"),
+            delivery.get("destination_type"),
+            getattr(message, "id", None),
+        )
         sent_or_failed += 1
     return sent_or_failed
+
+
+async def _record_message_id(owner_id: Any, destination: Any, message_id: Any) -> None:
+    handle = _database()
+    if handle is None or not owner_id or not destination or message_id is None:
+        return
+    if not destination:
+        return
+    try:
+        await handle[BATCHES_COLLECTION].update_one(
+            {"batch_id": owner_id},
+            {
+                "$set": {
+                    f"message_ids.{destination}": int(message_id),
+                    "state": "PUBLISHED",
+                    "published_at": _now(),
+                    "updated_at": _now(),
+                }
+            },
+        )
+    except Exception:
+        logger.debug("Could not record message id for %s", owner_id, exc_info=True)
+
+
+async def _flag_late_arrival(event: Dict[str, Any]) -> None:
+    """Mark a published batch as needing a live update for a late arrival."""
+    handle = _database()
+    if handle is None:
+        return
+    logical_id = event.get("logical_id")
+    if not logical_id:
+        return
+    try:
+        await handle[BATCHES_COLLECTION].update_many(
+            {"logical_id": logical_id, "state": {"$in": ["PUBLISHED", "READY"]}},
+            {
+                "$addToSet": {"event_ids": event["event_id"]},
+                "$set": {
+                    "has_late_arrivals": True,
+                    "late_state": "IDLE",
+                    "state": "PUBLISHED",
+                    "updated_at": _now(),
+                },
+            },
+        )
+        logger.info("Feature 46 late arrival flagged for %s", logical_id)
+    except Exception:
+        logger.debug("Could not flag late arrival for %s", logical_id, exc_info=True)
 
 
 async def recover_pending_work(stale_minutes: int = 10) -> None:
@@ -1583,9 +2060,16 @@ async def recover_pending_work(stale_minutes: int = 10) -> None:
             {"state": "PROCESSING", "processing_started_at": {"$lt": stale}},
             {"$set": {"state": "PENDING"}},
         )
+        # An interrupted batch must go back to OPEN with its window already
+        # elapsed so the next worker cycle publishes it immediately. Its
+        # max_window_end is preserved, so recovery can never extend a batch.
         await handle[BATCHES_COLLECTION].update_many(
             {"state": "PROCESSING", "processing_started_at": {"$lt": stale}},
             {"$set": {"state": "OPEN", "window_end": _now()}},
+        )
+        await handle[BATCHES_COLLECTION].update_many(
+            {"late_state": "PROCESSING"},
+            {"$set": {"late_state": "IDLE"}},
         )
     except Exception:
         logger.exception("Feature 46 recovery failed")
@@ -1593,9 +2077,10 @@ async def recover_pending_work(stale_minutes: int = 10) -> None:
 
 async def process_once(bot) -> Dict[str, int]:
     batches = await process_due_batches(bot)
+    late = await process_late_updates(bot)
     events = await process_pending_events(bot)
     deliveries = await process_deliveries(bot)
-    return {"batches": batches, "events": events, "deliveries": deliveries}
+    return {"batches": batches, "late": late, "events": events, "deliveries": deliveries}
 
 
 # ---------------------------------------------------------------------------
@@ -1894,7 +2379,7 @@ async def get_statistics() -> Dict[str, Any]:
         stats["events"] = await handle[EVENTS_COLLECTION].count_documents({})
         stats["movies"] = await handle[EVENTS_COLLECTION].count_documents({"category": "movie"})
         stats["series_batches"] = await handle[BATCHES_COLLECTION].count_documents(
-            {"state": {"$in": ["READY", "FINALIZED"]}}
+            {"state": {"$in": ["READY", "PUBLISHED", "FINALIZED"]}}
         )
         stats["episodes"] = await handle[EVENTS_COLLECTION].count_documents({"category": "series"})
         stats["channel_sent"] = await handle[DELIVERIES_COLLECTION].count_documents(
