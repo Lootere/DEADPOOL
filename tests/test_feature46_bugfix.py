@@ -335,15 +335,16 @@ class MetadataProviderTests(unittest.TestCase):
         metadata = imdb.metadata_from_node(FULL_MOVIE_NODE)
         caption = engine.build_movie_caption(event, metadata, engine.DEFAULT_SETTINGS)
         for expected in (
-            "NEW MOVIE UPLOADED",
+            "NEW MOVIE DROP",
             "Kongsi (2011)",
             "⭐ IMDb: 5.2/10",
             "🆔 IMDb: tt1932660",
-            "🎬 Genre: Action, Comedy",
+            "🎭 Genre: Action, Comedy",
             "🌐 Language: Hindi",  # event language is kept when present
-            "🎞️ Quality: 720p",
+            "🎞️ <b>AVAILABLE QUALITIES:</b>",
+            "720p",
             "⏱️ Runtime: 1h 30m",
-            "📝 Description:",
+            "THE STORY",
             "secret societies",
         ):
             self.assertIn(expected, caption)
@@ -426,12 +427,12 @@ class MetadataProviderTests(unittest.TestCase):
         captions = engine.build_series_captions(events, metadata, engine.DEFAULT_SETTINGS)
         text = "\n".join(captions)
         for expected in (
-            "NEW SERIES EPISODES ADDED",
+            "NEW SERIES EPISODES DROP",
             "Akka (2026) — Season 1",
             "⭐ IMDb: 7.4/10",
-            "🎬 Genre: Crime, Drama",
-            "📝 Description:",
-            "Total New Episodes: 3",
+            "🎭 Genre: Crime, Drama",
+            "ABOUT THE SERIES",
+            "TOTAL NEW EPISODES: 3",
         ):
             self.assertIn(expected, text)
         for episode in range(1, 4):

@@ -1219,13 +1219,16 @@ def _resolve_window(settings: Dict[str, Any], kind: str) -> Tuple[int, int]:
     """Return (quiet_window, max_wait) in seconds for a movie or series batch.
 
     The legacy ``batch_window_seconds`` value is still honoured as the quiet
-    window when no per-kind override has been configured, so existing installs
-    keep their current behaviour until an admin opts into the new controls.
+    window when no per-kind override has been explicitly configured, so
+    existing installs keep their current behaviour until an admin opts into the
+    new controls.
     """
     quiet_key = f"{kind}_quiet_window_seconds"
     max_key = f"{kind}_max_wait_seconds"
+    # Only use the new key if it was explicitly set (not just from defaults).
     quiet_raw = settings.get(quiet_key)
-    if quiet_raw is None:
+    if quiet_raw == DEFAULT_SETTINGS.get(quiet_key):
+        # Not explicitly set: fall back to legacy batch_window_seconds.
         quiet_raw = settings.get("batch_window_seconds", DEFAULT_QUIET_WINDOW)
     try:
         quiet = int(quiet_raw)
@@ -1299,15 +1302,25 @@ async def record_upload_event(media: Any, source_db: str = "primary") -> bool:
                 {"logical_id": event["logical_id"], "state": {"$in": ["OPEN", "PROCESSING"]}}
             )
             if open_batch is not None:
+                # Existing open batch: add to it (restarts quiet window).
                 await _enqueue_batch_event(
                     event, settings, "series" if category == "series" else "movie"
                 )
             else:
-                await handle[EVENTS_COLLECTION].update_one(
-                    {"event_id": event["event_id"]},
-                    {"$set": {"state": "LATE_PENDING"}},
+                # No open batch: check if published (late arrival) or create new.
+                published_batch = await handle[BATCHES_COLLECTION].find_one(
+                    {"logical_id": event["logical_id"], "state": "PUBLISHED"}
                 )
-                await _flag_late_arrival(event)
+                if published_batch is not None:
+                    await handle[EVENTS_COLLECTION].update_one(
+                        {"event_id": event["event_id"]},
+                        {"$set": {"state": "LATE_PENDING"}},
+                    )
+                    await _flag_late_arrival(event)
+                else:
+                    await _enqueue_batch_event(
+                        event, settings, "series" if category == "series" else "movie"
+                    )
         return True
     except Exception:
         logger.exception("Failed to register Feature 46 upload event")
@@ -1510,18 +1523,22 @@ async def process_due_batches(bot=None, limit: int = 10) -> int:
     processed = 0
     now = _now()
     for _ in range(limit):
+        now = _now()
+        # Try window_end first (normal case), then max_window_end (forced).
         batch = await handle[BATCHES_COLLECTION].find_one_and_update(
-            {
-                "state": "OPEN",
-                "$or": [
-                    {"window_end": {"$lte": now}},
-                    {"max_window_end": {"$lte": now}},
-                ],
-            },
+            {"state": "OPEN", "window_end": {"$lte": now}},
             {"$set": {"state": "PROCESSING", "processing_started_at": now}},
             sort=[("window_end", 1)],
             return_document=True,
         )
+        if batch is None:
+            # Also check max_window_end for batches that exceeded max wait.
+            batch = await handle[BATCHES_COLLECTION].find_one_and_update(
+                {"state": "OPEN", "max_window_end": {"$lte": now}},
+                {"$set": {"state": "PROCESSING", "processing_started_at": now}},
+                sort=[("max_window_end", 1)],
+                return_document=True,
+            )
         if not batch:
             break
         kind = batch.get("kind") or ("series" if batch.get("season") is not None else "movie")
