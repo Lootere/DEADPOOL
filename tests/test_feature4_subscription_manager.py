@@ -174,20 +174,27 @@ class TestFeature4SubscriptionManager(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.dest_mgr.get_destination("dest_extra"))
 
     async def test_fr4_plans_mapped_to_destinations(self):
-        """FR4: Plans map to explicit destinations (e.g. Silver=group; Gold=group+ch1; VIP=all three)."""
+        """FR4: Every VIP plan includes all three configured channel destinations."""
         silver = self.dest_mgr.get_plan("silver")
         gold = self.dest_mgr.get_plan("gold")
         vip = self.dest_mgr.get_plan("vip")
 
-        self.assertEqual(silver["destinations"], ["dest_group1"])
-        self.assertEqual(gold["destinations"], ["dest_group1", "dest_channel1"])
-        self.assertEqual(vip["destinations"], ["dest_group1", "dest_channel1", "dest_channel2"])
+        all_dests = ["dest_group1", "dest_channel1", "dest_channel2"]
+        self.assertEqual(silver["destinations"], all_dests)
+        self.assertEqual(gold["destinations"], all_dests)
+        self.assertEqual(vip["destinations"], all_dests)
+        self.assertEqual(silver["duration_days"], 30)
+        self.assertEqual(gold["duration_days"], 30)
+        self.assertEqual(vip["duration_days"], 30)
+        self.assertEqual(silver["price"], "₹35/month")
+        self.assertEqual(gold["price"], "₹35/month")
+        self.assertEqual(vip["price"], "₹35/month")
 
         # Format plans text
         plan_text = format_dest_plans_text(self.dest_mgr.list_plans(), self.dest_mgr._destinations)
         self.assertIn("Silver VIP", plan_text)
         self.assertIn("Gold VIP", plan_text)
-        self.assertIn("All-Access Diamond VIP", plan_text)
+        self.assertIn("Diamond VIP", plan_text)
 
     async def test_fr5_and_fr7_activation_and_renewal_rules(self):
         """FR5 & FR7: Activation, before-expiry extension vs after-expiry reset."""
@@ -233,8 +240,8 @@ class TestFeature4SubscriptionManager(unittest.IsolatedAsyncioTestCase):
         )
 
         invites = await self.sub_mgr.generate_user_invites(self.client, user_id)
-        # Gold has 2 destinations: dest_group1, dest_channel1
-        self.assertEqual(len(invites), 2)
+        # Gold has 3 destinations: dest_group1, dest_channel1, dest_channel2
+        self.assertEqual(len(invites), 3)
         for dest_id, link_info in invites.items():
             self.assertIn("invite_link", link_info)
             self.assertFalse(link_info["joined"])

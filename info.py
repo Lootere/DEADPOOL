@@ -42,7 +42,10 @@ PREMIUM_LOGS = int(premium) if premium and id_pattern.search(premium) else None
 pay_log = environ.get('PAYMENT_LOG_CHANNEL', environ.get('PAYMENT_LOGS', str(PREMIUM_LOGS or '')))
 PAYMENT_LOG_CHANNEL = int(pay_log) if pay_log and id_pattern.search(pay_log) else PREMIUM_LOGS
 # lock file, set file limit 
-FILE_LIMITE = int(environ.get('FILE_LIMITE', 5))
+_file_limit_raw = environ.get('FILE_LIMIT')
+if _file_limit_raw is None:
+    _file_limit_raw = environ.get('FILE_LIMITE', '5')
+FILE_LIMIT = int(_file_limit_raw)
 SEND_ALL_LIMITE = int(environ.get('SEND_ALL_LIMITE', 3))
 LIMIT_MODE = is_enabled((environ.get('LIMIT_MODE', 'True')), False)
 

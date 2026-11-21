@@ -209,7 +209,7 @@ class TestPaymentVerificationSystem(unittest.IsolatedAsyncioTestCase):
             plan_id="gold",
             plan_name="Gold VIP",
             duration_days=30,
-            amount="₹199",
+            amount="₹35/month",
             screenshot_file_id="PHOTO_VIP_GOLD",
         )
         req_id = req["request_id"]
@@ -227,12 +227,12 @@ class TestPaymentVerificationSystem(unittest.IsolatedAsyncioTestCase):
         # Bot Premium must remain None
         self.assertIsNone(await self.bot_db.get_user(user_id))
 
-        # Group/Channel VIP must be active with Gold destinations (dest_group1, dest_channel1)
+        # Group/Channel VIP must be active with all three destinations
         vip_sub = await self.sub_mgr.get_user_subscription(user_id)
         self.assertIsNotNone(vip_sub)
         self.assertEqual(vip_sub["status"], "active")
-        self.assertEqual(vip_sub["destinations"], ["dest_group1", "dest_channel1"])
-        self.assertEqual(len(self.client.created_links), 2)
+        self.assertEqual(vip_sub["destinations"], ["dest_group1", "dest_channel1", "dest_channel2"])
+        self.assertEqual(len(self.client.created_links), 3)
 
         # Caption formatting must never expose invite links
         caption = format_review_message_caption(updated_req)

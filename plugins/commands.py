@@ -809,7 +809,7 @@ async def start(client, message):
                     settings,
                     "files_count",
                     "file_limit",
-                    FILE_LIMITE,
+                    FILE_LIMIT,
                     script.FILE_LIMIT,
                     file_id=file_id,
                     grp_id=grp_id_int,
@@ -840,7 +840,7 @@ async def start(client, message):
                     except Exception:
                         return
                 if usage_count is not None:
-                    limit = int(settings.get("file_limit", FILE_LIMITE))
+                    limit = int(settings.get("file_limit", FILE_LIMIT))
                     f_caption += (
                         f"\n\n<b>Dᴀɪʟʏ Fɪʟᴇ Lɪᴍɪᴛ: "
                         f"{usage_count}/{limit}</b>"
@@ -864,7 +864,7 @@ async def start(client, message):
             settings,
             "files_count",
             "file_limit",
-            FILE_LIMITE,
+            FILE_LIMIT,
             script.FILE_LIMIT,
             file_id=file_id,
             grp_id=grp_id_int,
@@ -890,7 +890,7 @@ async def start(client, message):
             file_caption=files.caption
         )
         if usage_count is not None:
-            limit = int(settings.get("file_limit", FILE_LIMITE))
+            limit = int(settings.get("file_limit", FILE_LIMIT))
             f_caption += (
                 f"<b>\n\nDᴀɪʟʏ Fɪʟᴇ Lɪᴍɪᴛ: "
                 f"{usage_count}/{limit}</b>"
@@ -1958,7 +1958,7 @@ u>✅️ ᴛʜɪʀᴅ ᴠᴇʀɪꜰʏ sʜᴏʀᴛɴᴇʀ ɴᴀᴍᴇ/ᴀᴘɪ</u
 
 📂 ꜰɪʟᴇ ᴄᴀᴘᴛɪᴏɴ - `{settings.get('caption', CUSTOM_FILE_CAPTION)}`
 
-📁 ᴅᴀɪʟʏ ғɪʟᴇ ʟɪᴍɪᴛ - `{settings.get('file_limit', FILE_LIMITE)}`
+📁 ᴅᴀɪʟʏ ғɪʟᴇ ʟɪᴍɪᴛ - `{settings.get('file_limit', FILE_LIMIT)}`
 
 📀 sᴇᴅɴ ᴀʟʟ ʙᴜᴛᴛᴏɴ ʟɪᴍɪᴛ - `{settings.get('all_limit', SEND_ALL_LIMITE)}`
 

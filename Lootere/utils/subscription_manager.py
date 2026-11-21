@@ -95,26 +95,29 @@ class DestinationManager:
             }
 
         # Default plans mapped to destinations
+        # Every VIP plan includes all three configured channel destinations.
+        # Only the price differs between plans; prices are admin-configurable
+        # via /vip_set_price and persisted in the destination_plans collection.
         self._plans = {
             "silver": {
                 "id": "silver",
                 "name": "Silver VIP",
-                "destinations": ["dest_group1"],
-                "price": "₹99/month",
+                "destinations": ["dest_group1", "dest_channel1", "dest_channel2"],
+                "price": "₹35/month",
                 "duration_days": 30,
             },
             "gold": {
                 "id": "gold",
                 "name": "Gold VIP",
-                "destinations": ["dest_group1", "dest_channel1"],
-                "price": "₹199/month",
+                "destinations": ["dest_group1", "dest_channel1", "dest_channel2"],
+                "price": "₹35/month",
                 "duration_days": 30,
             },
             "vip": {
                 "id": "vip",
-                "name": "All-Access Diamond VIP",
+                "name": "Diamond VIP",
                 "destinations": ["dest_group1", "dest_channel1", "dest_channel2"],
-                "price": "₹299/month",
+                "price": "₹35/month",
                 "duration_days": 30,
             },
         }
@@ -128,7 +131,10 @@ class DestinationManager:
 
                 plans_col = self.db["destination_plans"]
                 async for p in plans_col.find():
-                    self._plans[p["id"]] = p
+                    if self._is_valid_plan(p):
+                        self._plans[p["id"]] = p
+                    else:
+                        logger.warning(f"Skipping invalid plan record from DB: {p.get('id', 'unknown')}")
             except Exception as e:
                 logger.warning(f"Could not load destinations from DB: {e}")
 
@@ -193,8 +199,30 @@ class DestinationManager:
     def get_plan(self, plan_id: str) -> Optional[dict]:
         return self._plans.get(plan_id)
 
+    @staticmethod
+    def _is_valid_plan(plan: dict) -> bool:
+        """Validate a plan record has required, well-formed fields."""
+        if not isinstance(plan, dict):
+            return False
+        plan_id = plan.get("id")
+        name = plan.get("name")
+        destinations = plan.get("destinations")
+        duration = plan.get("duration_days")
+        price = plan.get("price")
+        if not plan_id or not isinstance(plan_id, str):
+            return False
+        if not name or not isinstance(name, str):
+            return False
+        if not isinstance(destinations, list) or len(destinations) == 0:
+            return False
+        if not isinstance(duration, int) or duration <= 0:
+            return False
+        if not price or not isinstance(price, str) or not price.strip():
+            return False
+        return True
+
     def get_all_plans(self) -> List[dict]:
-        return list(self._plans.values())
+        return [p for p in self._plans.values() if self._is_valid_plan(p)]
 
     def list_destinations(self) -> List[dict]:
         return self.get_all_destinations()
@@ -203,15 +231,30 @@ class DestinationManager:
         return self.get_all_plans()
 
     async def add_plan(self, plan_id: str, name: str, destination_ids: List[str], duration_days: int = 30, price: str = "") -> Tuple[bool, str]:
+        if not plan_id or not plan_id.strip():
+            return False, "plan_id cannot be empty."
+        if not name or not name.strip():
+            return False, "plan name cannot be empty."
+        if not destination_ids or not isinstance(destination_ids, list):
+            return False, "destination_ids must be a non-empty list."
+        try:
+            duration_days = int(duration_days)
+        except (TypeError, ValueError):
+            return False, "duration_days must be a positive integer."
+        if duration_days <= 0:
+            return False, "duration_days must be greater than zero."
+        if not price or not price.strip():
+            return False, "price cannot be empty."
+
         record = {
-            "id": plan_id,
-            "name": name,
-            "destinations": destination_ids,
-            "duration_days": int(duration_days),
-            "price": price,
+            "id": plan_id.strip(),
+            "name": name.strip(),
+            "destinations": [d.strip() for d in destination_ids if d.strip()],
+            "duration_days": duration_days,
+            "price": price.strip(),
             "created_at": datetime.now(IST),
         }
-        self._plans[plan_id] = record
+        self._plans[plan_id.strip()] = record
         if self.db is not None:
             try:
                 await self.db["destination_plans"].update_one(
@@ -231,6 +274,24 @@ class DestinationManager:
             except Exception:
                 pass
         return True, f"Plan '{p['name']}' removed."
+
+    async def set_plan_price(self, plan_id: str, price: str) -> Tuple[bool, str]:
+        """Update a plan's price. Persisted to DB so it survives restarts."""
+        if plan_id not in self._plans:
+            return False, f"Plan '{plan_id}' not found."
+        if not price or not price.strip():
+            return False, "Price cannot be empty."
+        self._plans[plan_id]["price"] = price.strip()
+        self._plans[plan_id]["updated_at"] = datetime.now(IST)
+        if self.db is not None:
+            try:
+                await self.db["destination_plans"].update_one(
+                    {"id": plan_id}, {"$set": {"price": price.strip(), "updated_at": datetime.now(IST)}}
+                )
+            except Exception as e:
+                logger.error(f"Failed to persist plan price: {e}")
+                return False, f"Price updated in memory but DB persist failed: {e}"
+        return True, f"Plan '{plan_id}' price set to {price.strip()}."
 
     def set_db(self, db_client):
         self.db = db_client
@@ -732,12 +793,14 @@ def format_dest_plans_text(plans: List[dict], destinations: Dict[str, dict]) -> 
         lines.append("<i>No VIP destination plans currently configured.</i>")
     else:
         for plan in plans:
+            if not DestinationManager._is_valid_plan(plan):
+                continue
             name = plan.get("name", "VIP Plan")
             price = plan.get("price", "Contact Admin")
             days = plan.get("duration_days", 30)
             dest_ids = plan.get("destinations", [])
             dest_names = [
-                destinations.get(d, {}).get("name", d) for d in dest_ids
+                destinations.get(d, {}).get("name", "VIP Destination") for d in dest_ids
             ]
             dest_str = ", ".join(dest_names) if dest_names else "Configured Destinations"
             lines.append(

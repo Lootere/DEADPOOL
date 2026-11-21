@@ -301,14 +301,19 @@ async def test_destination_cmd(client, message):
 async def list_vip_plans_cmd(client, message):
     from Lootere.utils.subscription_manager import subscription_manager
     plans = subscription_manager.dest_mgr.list_plans()
+    destinations = subscription_manager.dest_mgr._destinations
     if not plans:
         return await message.reply_text("No VIP plans configured. Use /vip_plan_add.")
     lines = ["<b>VIP PLANS LIST</b>\n"]
     for p in plans:
-        dests = ", ".join(p.get("destinations", []))
+        dest_ids = p.get("destinations", [])
+        dest_names = [
+            destinations.get(d, {}).get("name", "VIP Destination") for d in dest_ids
+        ]
+        dest_str = ", ".join(dest_names) if dest_names else "Configured Destinations"
         lines.append(
             f"• <b>{p.get('name')}</b> (<code>{p.get('id')}</code>)\n"
-            f"  ├ <b>Destinations:</b> <code>{dests}</code>\n"
+            f"  ├ <b>Destinations:</b> <code>{dest_str}</code>\n"
             f"  ├ <b>Duration:</b> <code>{p.get('duration_days')} Days</code>\n"
             f"  └ <b>Price:</b> <code>{p.get('price')}</code>\n"
         )
@@ -349,6 +354,23 @@ async def del_vip_plan_cmd(client, message):
         return await message.reply_text("<b>Usage:</b> <code>/vip_plan_del &lt;plan_id&gt;</code>")
     plan_id = message.command[1]
     success, msg = await subscription_manager.dest_mgr.remove_plan(plan_id)
+    await message.reply_text(msg)
+
+
+@Client.on_message(filters.command("vip_set_price") & filters.user(ADMINS))
+async def set_vip_price_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    if len(message.command) != 3:
+        return await message.reply_text(
+            "<b>Usage:</b> <code>/vip_set_price &lt;plan_id&gt; &lt;price&gt;</code>\n"
+            "<b>Example:</b> <code>/vip_set_price silver ₹49/month</code>\n"
+            "<b>Valid plans:</b> silver, gold, vip"
+        )
+    plan_id = message.command[1].strip().lower()
+    price = message.command[2].strip()
+    if not price:
+        return await message.reply_text("Price cannot be empty.")
+    success, msg = await subscription_manager.dest_mgr.set_plan_price(plan_id, price)
     await message.reply_text(msg)
 
 

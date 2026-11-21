@@ -1720,7 +1720,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await save_group_settings(grp_id, 'caption', CUSTOM_FILE_CAPTION)
         await save_group_settings(grp_id, 'fsub_id', AUTH_CHANNEL)
         await save_group_settings(grp_id, 'log', LOG_CHANNEL)
-        await save_group_settings(grp_id, 'file_limit', FILE_LIMITE)
+        await save_group_settings(grp_id, 'file_limit', FILE_LIMIT)
         await save_group_settings(grp_id, 'streamapi', STREAM_API)
         await save_group_settings(grp_id, 'streamsite', STREAM_SITE)
         await save_group_settings(grp_id, 'all_limit', SEND_ALL_LIMITE)
