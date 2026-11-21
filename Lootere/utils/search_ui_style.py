@@ -221,7 +221,6 @@ def classify_search_button(
         cb.startswith("files#")
         or cb.startswith("search_suggestion#")
         or cb.startswith("spol#")
-        or cb.startswith("playlist_add#")
     ):
         return "file"
 
@@ -250,15 +249,6 @@ def classify_search_button(
             return "navigation"
         return "file"
 
-    if cb.startswith("sort#"):
-        parts = cb.split("#")
-        if len(parts) == 2:
-            return "normal"
-        target = parts[2].lower() if len(parts) >= 3 else ""
-        if target in ("home", "back"):
-            return "navigation"
-        return "file"
-
     if cb.startswith("epi#"):
         if "back" in norm_text or "ʙᴀᴄᴋ" in raw_lower or "⥢" in raw_text or "◁" in raw_text:
             return "navigation"
@@ -268,7 +258,6 @@ def classify_search_button(
         cb.startswith("select_lang#")
         or cb.startswith("quality#")
         or cb.startswith("seas#")
-        or cb.startswith("playlist_save#")
     ):
         return "normal"
 

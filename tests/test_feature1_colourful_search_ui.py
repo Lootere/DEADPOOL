@@ -113,10 +113,8 @@ class TestFeature1GenuineButtonStyling(unittest.TestCase):
         self.assertEqual(classify_search_button("Lᴀɴɢᴜᴀɢᴇ", "select_lang#101"), "normal")
         self.assertEqual(classify_search_button("Qᴜᴀʟɪᴛʏ", "quality#101"), "normal")
         self.assertEqual(classify_search_button("📅 Sᴀᴀʟ", "year#101"), "normal")
-        self.assertEqual(classify_search_button("↕ Sᴏʀᴛ", "sort#101"), "normal")
         self.assertEqual(classify_search_button("Sᴇᴀꜱᴏɴs", "seas#101"), "normal")
         self.assertEqual(classify_search_button("Eᴘɪsᴏᴅᴇ", "epi#101"), "normal")
-        self.assertEqual(classify_search_button("💾 Save to playlist", "playlist_save#101"), "normal")
         self.assertEqual(
             classify_search_button("Sᴇʟᴇᴄᴛ Yᴏᴜʀ Dᴇꜱɪʀᴇᴅ Lᴀɴɢᴜᴀɢᴇ ↓", "lang#101#unknown"),
             "normal",
@@ -126,14 +124,12 @@ class TestFeature1GenuineButtonStyling(unittest.TestCase):
         self.assertEqual(classify_search_button("[1.45 GB] Movie.mkv", "files#abc123"), "file")
         self.assertEqual(classify_search_button("Movie Title", "search_suggestion#101#tok"), "file")
         self.assertEqual(classify_search_button("Movie Title", "spol#tt12345#101"), "file")
-        self.assertEqual(classify_search_button("➕ Watchlist", "playlist_add#101#5#pl1"), "file")
         self.assertEqual(classify_search_button("Hɪɴᴅɪ", "lang#101#hin"), "file")
         self.assertEqual(classify_search_button("720p", "lusifilms#101#720p"), "file")
         self.assertEqual(classify_search_button("1080p", "lusifilms#101#1080p"), "file")
         self.assertEqual(classify_search_button("Sᴇᴀꜱᴏɴ 𝟷", "seasons#101#s01"), "file")
         self.assertEqual(classify_search_button("ᴇᴘ 𝟷", "episode#101#e01"), "file")
         self.assertEqual(classify_search_button("2025", "year#101#2025"), "file")
-        self.assertEqual(classify_search_button("Sᴇᴀsᴏɴ / Eᴘɪsᴏᴅᴇ", "sort#101#season"), "file")
 
         # Navigation & pagination -> Green ("success")
         self.assertEqual(classify_search_button("Nᴇxᴛ ➪", "next_101_key_10"), "navigation")
@@ -326,7 +322,6 @@ class TestFeature1GenuineButtonStyling(unittest.TestCase):
             ],
             [
                 PyroforkLayer186Button(text="📅 Sᴀᴀʟ", callback_data="year#42"),
-                PyroforkLayer186Button(text="↕ Sᴏʀᴛ", callback_data="sort#42"),
             ],
             [
                 PyroforkLayer186Button(text="Sᴇᴀꜱᴏɴs", callback_data="seas#42"),
@@ -367,8 +362,6 @@ class TestFeature1GenuineButtonStyling(unittest.TestCase):
         self.assertEqual(styled[2][1].style, "danger")
         self.assertEqual(styled[3][0].text, "📅 Sᴀᴀʟ")
         self.assertEqual(styled[3][0].style, "danger")
-        self.assertEqual(styled[3][1].text, "↕ Sᴏʀᴛ")
-        self.assertEqual(styled[3][1].style, "danger")
         self.assertEqual(styled[4][0].text, "Sᴇᴀꜱᴏɴs")
         self.assertEqual(styled[4][0].style, "danger")
         self.assertEqual(styled[4][1].text, "Eᴘɪsᴏᴅᴇ")

@@ -463,7 +463,6 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                     </div>
                     <div class="tg-kb-row">
                         <button type="button" class="tg-btn tg-btn-danger">📅 Sᴀᴀʟ</button>
-                        <button type="button" class="tg-btn tg-btn-danger">↕ Sᴏʀᴛ</button>
                     </div>
                     <div class="tg-kb-row">
                         <button type="button" class="tg-btn tg-btn-primary">[1.45 GB] Deadpool.2024.1080p.Hindi.mkv</button>

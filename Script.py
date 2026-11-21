@@ -249,13 +249,6 @@ Money heist S01E01
 • /myplan - ᴄʜᴇᴄᴋ ʏᴏᴜʀ ᴄᴜʀʀᴜɴᴛ ᴘʟᴀɴ.
 • /redeem - ʀᴇᴅᴇᴇᴍ ʙᴏᴛ ᴘʀᴇᴍɪᴜᴍ ᴄᴏᴅᴇ
 • /leaderboard - ᴠɪᴇᴡ ᴛʜɪs ᴡᴇᴇᴋ's ᴍᴏsᴛ ᴀᴄᴛɪᴠᴇ ᴜsᴇʀs.
-• /playlist - ᴠɪᴇᴡ ʏᴏᴜʀ ᴘʟᴀʏʟɪsᴛs.
-• /playlist_new - ᴄʀᴇᴀᴛᴇ ᴀ ᴘʟᴀʏʟɪsᴛ.
-• /playlist_add - ᴀᴅᴅ ᴀ ᴍᴏᴠɪᴇ ᴛɪᴛʟᴇ ᴛᴏ ᴀ ᴘʟᴀʏʟɪsᴛ.
-• /playlist_remove - ʀᴇᴍᴏᴠᴇ ᴀ ᴛɪᴛʟᴇ ғʀᴏᴍ ᴀ ᴘʟᴀʏʟɪsᴛ.
-• /playlist_delete - ᴅᴇʟᴇᴛᴇ ᴀ ᴘʟᴀʏʟɪsᴛ.
-• /playlist_view - ᴠɪᴇᴡ ᴘʟᴀʏʟɪsᴛ ᴛɪᴛʟᴇs.
-• /playlist_share - ɢᴇᴛ ᴀ sʜᴀʀᴇᴀʙʟᴇ ᴘʟᴀʏʟɪsᴛ ʟɪɴᴋ.
 • /trackseries - ᴛʀᴀᴄᴋ ᴀ sᴇʀɪᴇs ғᴏʀ ɴᴇᴡ ᴇᴘɪsᴏᴅᴇ ᴀʟᴇʀᴛs.
 • /untrackseries - sᴛᴏᴘ ᴛʀᴀᴄᴋɪɴɢ ᴀ sᴇʀɪᴇs.
 • /myseries - ᴠɪᴇᴡ ʏᴏᴜʀ ᴛʀᴀᴄᴋᴇᴅ sᴇʀɪᴇs.
