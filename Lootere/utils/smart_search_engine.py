@@ -413,10 +413,13 @@ def parse_smart_media_item(
 
 def format_smart_summary_line(item: SmartMediaMetadata) -> str:
     """Format the canonical metadata summary line matching the PRD target examples:
-    - Movie:  `1.45GB | Movie Name • 2025` (plus ` • Language` only if known)
-    - Series: `0.62GB | E01 S21 • Roadies Rebirth 2026` (plus language only if known)
+    - Movie:  `1.45GB | 1080p • Movie Name • 2025` (plus ` • Language` only if known)
+    - Series: `0.62GB | 1080p • E01 S21 • Roadies Rebirth 2026` (plus quality/language only if known)
     """
     bullet_parts: List[str] = []
+
+    if item.quality:
+        bullet_parts.append(item.quality)
 
     if item.category == "series":
         if item.episode_code:
@@ -526,6 +529,8 @@ def render_smart_result_entry(
         # 6. Emoji Separator
         lead_icon = "📺" if item.category == "series" else "🎬"
         parts: List[str] = [f"📦 {html_escape(item.size_gb)}"]
+        if item.quality:
+            parts.append(html_escape(item.quality))
         if item.category == "series" and item.episode_code:
             parts.append(html_escape(item.episode_code))
         title_token = (
@@ -555,6 +560,8 @@ def render_smart_result_entry(
     if resolved_style == 8:
         # 8. Minimal
         min_parts: List[str] = [item.size_gb]
+        if item.quality:
+            min_parts.append(item.quality)
         if item.category == "series" and item.episode_code:
             min_parts.append(item.episode_code)
         if item.category == "movie" and item.year and item.year not in item.title:
@@ -570,6 +577,8 @@ def render_smart_result_entry(
     if resolved_style == 9:
         # 9. Bracket
         bracket_parts: List[str] = [f"[{html_escape(item.size_gb)}]"]
+        if item.quality:
+            bracket_parts.append(f"[{html_escape(item.quality)}]")
         if item.category == "series" and item.episode_code:
             bracket_parts.append(f"[{html_escape(item.episode_code)}]")
         title_token = (

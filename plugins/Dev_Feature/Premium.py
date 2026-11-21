@@ -8,7 +8,7 @@ from asyncio import sleep
 from info import ADMINS, PREMIUM_LOGS, OWNER_USER_NAME, PREMIUM_PIC
 from utils import get_seconds, get_premium_plans, format_premium_plans
 from database.users_chats_db import db 
-from pyrogram import Client, filters 
+from pyrogram import Client, filters, enums
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -193,14 +193,14 @@ async def plan(client, message):
             photo=PREMIUM_PIC,
             caption=caption,
             reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
         logger.exception("Failed to send premium plan photo; falling back to text")
         await message.reply_text(
             text=caption,
             reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True,
         )
 

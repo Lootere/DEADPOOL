@@ -735,6 +735,15 @@ async def get_text(settings, remaining_seconds, files, query, total_results, sea
             cap += "<b>📚 <u>Your Requested Files</u> 👇\n\n</b>"
             if smart_blocks:
                 cap += f"{smart_blocks}\n\n"
+        # Selected Quality label: only shown after an actual quality selection.
+        try:
+            from plugins.pm_filter import SEARCH_FILTERS  # lazy import (circular-safe)
+            _sq_key = f"{query.message.chat.id}-{query.message.id}"
+            _sq = SEARCH_FILTERS.get(_sq_key, {}).get("quality")
+        except Exception:
+            _sq = None
+        if _sq:
+            cap = f"<b>Selected Quality:</b> {_sq}\n\n{cap}"
         return cap
     except Exception as e:
         await query.answer(f"{e}", show_alert=True)
