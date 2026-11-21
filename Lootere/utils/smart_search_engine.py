@@ -413,16 +413,14 @@ def parse_smart_media_item(
 
 def format_smart_summary_line(item: SmartMediaMetadata) -> str:
     """Format the canonical metadata summary line matching the PRD target examples:
-    - Movie:  `1.45GB | 1080p • Movie Name • 2025` (plus ` • Language` only if known)
-    - Series: `0.62GB | E01 S21 • Roadies Rebirth 2026` (plus quality/language only if known)
+    - Movie:  `1.45GB | Movie Name • 2025` (plus ` • Language` only if known)
+    - Series: `0.62GB | E01 S21 • Roadies Rebirth 2026` (plus language only if known)
     """
     bullet_parts: List[str] = []
 
     if item.category == "series":
         if item.episode_code:
             bullet_parts.append(item.episode_code)
-        if item.quality:
-            bullet_parts.append(item.quality)
         series_title = (
             f"{item.title} {item.year}".strip()
             if item.year and item.year not in item.title
@@ -433,8 +431,6 @@ def format_smart_summary_line(item: SmartMediaMetadata) -> str:
         if item.language:
             bullet_parts.append(item.language)
     else:
-        if item.quality:
-            bullet_parts.append(item.quality)
         if item.title:
             bullet_parts.append(item.title)
         if item.year and item.year not in item.title:
@@ -532,8 +528,6 @@ def render_smart_result_entry(
         parts: List[str] = [f"📦 {html_escape(item.size_gb)}"]
         if item.category == "series" and item.episode_code:
             parts.append(html_escape(item.episode_code))
-        if item.quality:
-            parts.append(html_escape(item.quality))
         title_token = (
             f"{item.title} {item.year}".strip()
             if item.category == "series" and item.year and item.year not in item.title
@@ -563,8 +557,6 @@ def render_smart_result_entry(
         min_parts: List[str] = [item.size_gb]
         if item.category == "series" and item.episode_code:
             min_parts.append(item.episode_code)
-        if item.quality:
-            min_parts.append(item.quality)
         if item.category == "movie" and item.year and item.year not in item.title:
             min_parts.append(item.year)
         if item.language:
@@ -580,8 +572,6 @@ def render_smart_result_entry(
         bracket_parts: List[str] = [f"[{html_escape(item.size_gb)}]"]
         if item.category == "series" and item.episode_code:
             bracket_parts.append(f"[{html_escape(item.episode_code)}]")
-        if item.quality:
-            bracket_parts.append(f"[{html_escape(item.quality)}]")
         title_token = (
             f"{item.title} {item.year}".strip()
             if item.category == "series" and item.year and item.year not in item.title

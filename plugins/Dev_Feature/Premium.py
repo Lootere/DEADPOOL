@@ -1,5 +1,6 @@
 # This code has been modified by @Looteredev
 # Please do not remove this credit
+import logging
 from datetime import timedelta, datetime, time
 import pytz
 from Script import script
@@ -10,6 +11,8 @@ from database.users_chats_db import db
 from pyrogram import Client, filters 
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+logger = logging.getLogger(__name__)
 
 async def check_expired_premium(client):
     last_dest_check = 0.0
@@ -171,27 +174,41 @@ async def premium_user(client, message):
         await message.reply_document('usersplan.txt', caption="Paid Users:")
 
 
-@Client.on_message(filters.command("plans"))
+@Client.on_message(filters.command(["plans", "plan"]))
 async def plan(client, message):
     btn = [[
         InlineKeyboardButton("🔲 Qʀ ", callback_data='qr_info'),
         InlineKeyboardButton("💳 Uᴘɪ ", callback_data='upi_info')],
 	[InlineKeyboardButton("❌ ᴄʟᴏꜱᴇ ❌", callback_data="close_data")
     ]]
-    await message.reply_photo(
-        photo=PREMIUM_PIC,
-        caption=format_premium_plans(await get_premium_plans()),
-        reply_markup=InlineKeyboardMarkup(btn),
-        parse_mode="html",
-    )
+    try:
+        caption = format_premium_plans(await get_premium_plans())
+    except Exception:
+        logger.exception("Failed to build premium plan information")
+        return await message.reply_text(
+            "Jaan, abhi plans load nahi ho paaye. Thodi der baad try karo ❤️"
+        )
+    try:
+        await message.reply_photo(
+            photo=PREMIUM_PIC,
+            caption=caption,
+            reply_markup=InlineKeyboardMarkup(btn),
+            parse_mode="html",
+        )
+    except Exception:
+        logger.exception("Failed to send premium plan photo; falling back to text")
+        await message.reply_text(
+            text=caption,
+            reply_markup=InlineKeyboardMarkup(btn),
+            parse_mode="html",
+            disable_web_page_preview=True,
+        )
 
 
 # ======================================================================
 # Feature 4: Premium Hub + VIP Destination Subscriptions (Admin & User)
 # ======================================================================
 
-import logging
-logger = logging.getLogger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
 
 

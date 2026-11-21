@@ -100,14 +100,14 @@ class ResolutionOnlyTests(unittest.TestCase):
         label = format_file_result_button(
             "Example.Movie.2025.1080p.WEB-DL.Hindi.mkv", int(1.45 * GB)
         )
-        self.assertEqual(label, "1.45 GB | 1080p | Example Movie 2025 [Hindi]")
+        self.assertEqual(label, "1.45 GB | Example Movie 2025 [Hindi]")
 
     def test_series_exact_reference_layout(self):
         label = format_file_result_button(
             "Akka.2026.S01E01.1080p.Hindi.mkv", int(0.66 * GB)
         )
         self.assertEqual(
-            label, "0.66 GB | 1080p | E01 S01 • Akka 2026 Season 1 [Hindi]"
+            label, "0.66 GB | E01 S01 • Akka 2026 Season 1 [Hindi]"
         )
 
     def test_series_second_reference_layout(self):
@@ -115,7 +115,7 @@ class ResolutionOnlyTests(unittest.TestCase):
             "Akka.2026.S01E02.720p.Hindi.mkv", int(0.46 * GB)
         )
         self.assertEqual(
-            label, "0.46 GB | 720p | E02 S01 • Akka 2026 Season 1 [Hindi]"
+            label, "0.46 GB | E02 S01 • Akka 2026 Season 1 [Hindi]"
         )
 
     def test_source_and_codec_tags_are_never_visible(self):
@@ -133,17 +133,18 @@ class ResolutionOnlyTests(unittest.TestCase):
             for token in FORBIDDEN_TECH_TOKENS:
                 self.assertNotIn(token, label, f"{token} leaked into {label!r}")
 
-    def test_only_allowed_resolutions_appear(self):
+    def test_resolutions_are_never_displayed(self):
         cases = {
+            "Movie.2025.360p.Hindi.mkv": "360p",
             "Movie.2025.480p.Hindi.mkv": "480p",
             "Movie.2025.720p.Hindi.mkv": "720p",
             "Movie.2025.1080p.Hindi.mkv": "1080p",
             "Movie.2025.2160p.Hindi.mkv": "2160p",
             "Movie.2025.4K.Hindi.mkv": "4K",
         }
-        for name, expected in cases.items():
+        for name, quality in cases.items():
             label = format_file_result_button(name, int(1.0 * GB))
-            self.assertIn(f"| {expected} |", label)
+            self.assertNotIn(quality, label, f"{quality} leaked into {label!r}")
 
     def test_missing_resolution_is_omitted(self):
         label = format_file_result_button(
@@ -152,12 +153,13 @@ class ResolutionOnlyTests(unittest.TestCase):
         self.assertEqual(label, "1.20 GB | Example Movie 2025 [Hindi]")
         self.assertNotIn("|  |", label)
 
-    def test_1080p_hq_is_reduced_to_resolution(self):
+    def test_1080p_hq_is_not_displayed(self):
         label = format_file_result_button(
             "Example.Movie.2025.1080p.HQ.Hindi.mkv", int(1.2 * GB)
         )
-        self.assertIn("| 1080p |", label)
+        self.assertNotIn("1080p", label)
         self.assertNotIn("HQ", label)
+        self.assertEqual(label, "1.20 GB | Example Movie 2025 [Hindi]")
 
 
 class MovieFormatTests(unittest.TestCase):
@@ -166,20 +168,20 @@ class MovieFormatTests(unittest.TestCase):
             "Example.Movie.2024.720p.Hindi.English.mkv", int(0.85 * GB)
         )
         self.assertEqual(
-            label, "0.85 GB | 720p | Example Movie 2024 [Hindi + English]"
+            label, "0.85 GB | Example Movie 2024 [Hindi + English]"
         )
 
     def test_movie_missing_year(self):
         label = format_file_result_button(
             "Example.Movie.1080p.Hindi.mkv", int(1.2 * GB)
         )
-        self.assertEqual(label, "1.20 GB | 1080p | Example Movie [Hindi]")
+        self.assertEqual(label, "1.20 GB | Example Movie [Hindi]")
 
     def test_movie_missing_language(self):
         label = format_file_result_button(
             "Example.Movie.2025.1080p.mkv", int(1.2 * GB)
         )
-        self.assertEqual(label, "1.20 GB | 1080p | Example Movie 2025")
+        self.assertEqual(label, "1.20 GB | Example Movie 2025")
 
     def test_movie_missing_quality_and_language(self):
         label = format_file_result_button("Example.Movie.2025.mkv", int(0.5 * GB))
@@ -191,7 +193,7 @@ class MovieFormatTests(unittest.TestCase):
             int(2.30 * GB),
         )
         self.assertEqual(
-            label, "2.30 GB | 2160p | Example Movie 2025 [Multi Audio]"
+            label, "2.30 GB | Example Movie 2025 [Multi Audio]"
         )
 
     def test_title_numbers_and_special_characters(self):
@@ -210,7 +212,7 @@ class MovieFormatTests(unittest.TestCase):
         label = format_file_result_button(
             "1917.2019.1080p.Hindi.mkv", int(1.1 * GB)
         )
-        self.assertEqual(label, "1.10 GB | 1080p | 1917 2019 [Hindi]")
+        self.assertEqual(label, "1.10 GB | 1917 2019 [Hindi]")
 
 
 class SeriesFormatTests(unittest.TestCase):
@@ -220,7 +222,7 @@ class SeriesFormatTests(unittest.TestCase):
             int(820.44 * MB),
         )
         self.assertLessEqual(len(label), MAX_BUTTON_TEXT_LENGTH)
-        self.assertTrue(label.startswith("0.80 GB | 1080p | E01 S01 • Akka The Prot"))
+        self.assertTrue(label.startswith("0.80 GB | E01 S01 • Akka The Prot"))
         self.assertTrue(label.endswith("2026 Season 1 [Hindi]"))
 
     def test_s01e02_is_distinct(self):
@@ -236,7 +238,7 @@ class SeriesFormatTests(unittest.TestCase):
             "Show.Name.S02.E03.2025.720p.Hindi.mkv", int(300 * MB)
         )
         self.assertEqual(
-            label, "0.29 GB | 720p | E03 S02 • Show Name 2025 Season 2 [Hindi]"
+            label, "0.29 GB | E03 S02 • Show Name 2025 Season 2 [Hindi]"
         )
 
     def test_spelled_season_episode(self):

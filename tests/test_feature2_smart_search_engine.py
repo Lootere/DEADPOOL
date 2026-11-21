@@ -66,7 +66,7 @@ class TestFeature2SmartSearchEngine(unittest.TestCase):
         self.assertIsNone(movie_item.language)
         self.assertEqual(
             format_smart_summary_line(movie_item),
-            "1.45GB | 1080p • Movie Name • 2025",
+            "1.45GB | Movie Name • 2025",
         )
 
         # Series target example: `0.62GB | E01 S21 • Roadies Rebirth 2026`
@@ -97,7 +97,7 @@ class TestFeature2SmartSearchEngine(unittest.TestCase):
         self.assertIsNone(item_1917.language)
         self.assertEqual(
             format_smart_summary_line(item_1917),
-            "2.10GB | 1080p • 1917 • 2019",
+            "2.10GB | 1917 • 2019",
         )
 
         # Numeric movie title without release year must NOT lose its title
@@ -110,7 +110,7 @@ class TestFeature2SmartSearchEngine(unittest.TestCase):
         self.assertEqual(item_1917_no_year.quality, "720p")
         self.assertEqual(
             format_smart_summary_line(item_1917_no_year),
-            "0.95GB | 720p • 1917",
+            "0.95GB | 1917",
         )
 
         # Title containing a year-like number + actual release year
@@ -160,7 +160,7 @@ class TestFeature2SmartSearchEngine(unittest.TestCase):
                 db_instance=FakeDB(),
             )
         )
-        self.assertIn("2.50GB | 1080p • Pushpa 2 • 2024 • Hindi", rendered)
+        self.assertIn("2.50GB | Pushpa 2 • 2024 • Hindi", rendered)
 
         # Confirm persisted record attributes were never mutated
         self.assertEqual(
