@@ -115,7 +115,7 @@ _STANDALONE_SEASON_RE = re.compile(
 )
 
 _STANDALONE_EPISODE_RE = re.compile(
-    r"(?:^|[\s._+\-\[\(])(?:Episode[\s._+\-]*0*(?P<e_word>\d{1,3})|Ep[\s._+\-]*0*(?P<e_short>\d{1,3})|E(?P<e_code>\d{2,3}))(?=$|[\s._+\-\]\)])",
+    r"(?:^|[\s._+\-\[\(])(?:Episode[\s._+\-]*0*(?P<e_word>\d{1,3})|Ep[\s._+\-]*0*(?P<e_short>\d{1,3})|E(?P<e_code>\d{1,3}))(?=$|[\s._+\-\]\)])",
     flags=re.IGNORECASE,
 )
 

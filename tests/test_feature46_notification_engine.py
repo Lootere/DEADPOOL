@@ -585,6 +585,8 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
                 "group_enabled": True,
                 "button_url": "https://t.me/examplegroup",
                 "batch_window_seconds": 300,
+                "movie_quiet_window_seconds": 0,
+                "series_quiet_window_seconds": 0,
             }
         )
 
@@ -974,6 +976,25 @@ class SeriesGroupingTests(unittest.IsolatedAsyncioTestCase):
         caption = bot.messages[0]["text"]
         for ep in range(1, 9):
             self.assertIn(f"E{ep:02d}", caption, f"Missing episode E{ep:02d}")
+
+    async def test_single_digit_episodes_not_collapsed(self):
+        """Regression: E1..E8 in separate tokens must count as 8 episodes.
+
+        The standalone-episode parser previously required two digits, so a
+        season pack named ``Show.S01.720p.E1 ... E8`` collapsed every file to
+        episode_code ``S01`` and the batch reported a single episode.
+        """
+        bot = FakeBot()
+        for ep in range(1, 9):
+            await engine.record_upload_event(
+                FakeMedia(f"Test.Series.2025.S01.720p.E{ep}.mkv", unique=f"sd-{ep}")
+            )
+        await engine.process_once(bot)
+        self.assertEqual(len(bot.messages), 2)
+        caption = bot.messages[0]["text"]
+        for ep in range(1, 9):
+            self.assertIn(f"E{ep:02d}", caption, f"Missing episode E{ep:02d}")
+        self.assertIn("TOTAL NEW EPISODES: 8", caption)
 
     async def test_episode_quality_variants(self):
         bot = FakeBot()

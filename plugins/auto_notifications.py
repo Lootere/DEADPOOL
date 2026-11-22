@@ -89,8 +89,9 @@ def _menu_text(settings) -> str:
         f"Auto notifications: {_status(bool(settings.get('enabled')))}\n"
         f"Channel: <code>{channel}</code> — {_status(bool(settings.get('channel_enabled') and settings.get('channel_id')))}\n"
         f"Group: <code>{group}</code> — {_status(bool(settings.get('group_enabled') and settings.get('group_id')))}\n\n"
-        f"GET NOW text: <b>{settings.get('button_text')}</b>\n"
-        f"GET NOW URL: <code>{button_url}</code>\n"
+        f"GET FILE: <b>{settings.get('primary_button_text') or 'GET FILE'}</b> → <code>{button_url}</code>\n"
+        f"UPDATE CHANNEL: <b>{settings.get('channel_button_text') or 'UPDATE CHANNEL'}</b> → "
+        f"<code>{str(settings.get('channel_button_url') or 'https://t.me/rkmovieszip')}</code>\n"
         f"Series batch window: <b>{int(settings.get('batch_window_seconds') or 300)}s</b>\n"
         f"Movie grouping: {_status(bool(settings.get('movie_quality_grouping')))} "
         f"(quiet {int(settings.get('movie_quiet_window_seconds') or 60)}s / max "
@@ -123,8 +124,13 @@ def _menu_markup(settings) -> InlineKeyboardMarkup:
             InlineKeyboardButton("Group ON/OFF", callback_data="autonotif#toggle_group"),
         ],
         [
-            InlineKeyboardButton("GET NOW Text", callback_data="autonotif#set_button_text"),
-            InlineKeyboardButton("GET NOW URL", callback_data="autonotif#set_button_url"),
+            InlineKeyboardButton("GET FILE Text", callback_data="autonotif#set_button_text"),
+            InlineKeyboardButton("GET FILE URL", callback_data="autonotif#set_button_url"),
+        ],
+        [
+            InlineKeyboardButton(
+                "UPDATE CHANNEL URL", callback_data="autonotif#set_channel_url"
+            ),
         ],
         [
             InlineKeyboardButton("Movie Caption", callback_data="autonotif#set_movie_caption"),
@@ -240,8 +246,9 @@ async def auto_notification_set(client, message):
     if len(parts) < 2:
         return await message.reply_text(
             "Usage: <code>/autonotif_set &lt;key&gt; &lt;value&gt;</code>\n"
-            "Keys: channel, group, button_text, button_url, movie_url, series_url, "
-            "movie_caption, series_caption, digest_caption, batch, digest_time, timezone"
+            "Keys: channel, group, button_text, primary_text, button_url, channel_text, "
+            "channel_url, movie_url, series_url, movie_caption, series_caption, "
+            "digest_caption, batch, digest_time, timezone"
         )
     key = parts[1].strip().lower()
     value = parts[2].strip() if len(parts) > 2 else ""
@@ -250,8 +257,22 @@ async def auto_notification_set(client, message):
         return await _set_destination(client, message, "channel_id", "Channel")
     if key == "group":
         return await _set_destination(client, message, "group_id", "Group")
-    if key == "button_text":
-        await engine.save_settings(message.from_user.id, button_text=engine.normalize_button_text(value))
+    if key in {"button_text", "primary_text"}:
+        await engine.save_settings(
+            message.from_user.id,
+            primary_button_text=engine.normalize_button_text(value, "GET FILE"),
+        )
+    elif key == "channel_text":
+        await engine.save_settings(
+            message.from_user.id,
+            channel_button_text=engine.normalize_button_text(value, "UPDATE CHANNEL"),
+        )
+    elif key == "channel_url":
+        if not engine.validate_button_url(value):
+            return await message.reply_text(
+                "❌ Invalid URL. Use a complete http(s) link, e.g. https://t.me/rkmovieszip"
+            )
+        await engine.save_settings(message.from_user.id, channel_button_url=value)
     elif key in {"button_url", "movie_url", "series_url"}:
         if not engine.validate_button_url(value):
             return await message.reply_text(
@@ -401,12 +422,21 @@ async def auto_notification_callback(client, query: CallbackQuery):
     elif action == "set_button_text":
         await query.answer()
         return await query.message.reply_text(
-            _prompt("button_text", "GET NOW", "Set GET NOW button text")
+            _prompt("primary_text", "GET FILE", "Set GET FILE button text")
         )
     elif action == "set_button_url":
         await query.answer()
         return await query.message.reply_text(
-            _prompt("button_url", "https://t.me/yourgroup", "Set GET NOW button URL")
+            _prompt("button_url", "https://t.me/yourgroup", "Set GET FILE button URL")
+        )
+    elif action == "set_channel_url":
+        await query.answer()
+        return await query.message.reply_text(
+            _prompt(
+                "channel_url",
+                "https://t.me/rkmovieszip",
+                "Set UPDATE CHANNEL button URL",
+            )
         )
     elif action in {"set_movie_caption", "set_series_caption"}:
         await query.answer()

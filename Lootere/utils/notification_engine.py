@@ -52,21 +52,32 @@ DIGESTS_COLLECTION = "weekly_digest_history"
 AUDIT_COLLECTION = "notification_audit_log"
 MOVIE_QUALITY_BATCHES_COLLECTION = "movie_quality_batches"
 
+# Style 7 "OTT Dark Cinematic" - a cinematic, full-bleed movie card. Telegram
+# has no colour support, so the dark OTT look is built from heavy dividers,
+# tight spacing and a single call-to-action line.
 DEFAULT_MOVIE_TEMPLATE = (
-    "<b>🎬 NEW MOVIE DROP</b>\n\n"
+    "<b>🎬 NEW MOVIE DROP</b>\n"
+    "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
     "<b>{title_line}</b>\n\n"
     "{rating_line}{imdb_line}{genre_line}{language_line}{quality_line}"
     "{runtime_line}{certification_line}{description_line}"
+    "<b>━━━━━━━━━━━━━━━━━━</b>\n"
+    "<i>▶️ Tap GET FILE to watch now</i>"
 )
 
+# Style 8 "Live Episode Tracker" - a running episode board: per-episode
+# qualities plus the live totals, updated in place as new episodes land.
 DEFAULT_SERIES_TEMPLATE = (
-    "<b>📺 NEW SERIES EPISODES DROP</b>\n\n"
+    "<b>📺 NEW SERIES EPISODES DROP</b>\n"
+    "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
     "<b>{title_line}</b>\n\n"
     "{rating_line}{imdb_line}{genre_line}{language_line}{quality_line}"
     "{runtime_line}{new_episodes_block}\n\n"
-    "<b>TOTAL NEW EPISODES: {episode_count}</b>\n"
-    "<b>TOTAL FILE VERSIONS: {version_count}</b>\n"
+    "<b>🎯 TOTAL NEW EPISODES: {episode_count}</b>\n"
+    "<b>📦 TOTAL FILE VERSIONS: {version_count}</b>\n"
     "{description_line}"
+    "<b>━━━━━━━━━━━━━━━━━━</b>\n"
+    "<i>🔴 Live tracker updated — tap GET FILE to watch</i>"
 )
 
 DEFAULT_DIGEST_TEMPLATE = (
@@ -84,6 +95,11 @@ _CHANNEL_DEFAULT = str(
 )
 _GROUP_DEFAULT = str(os.environ.get("AUTO_NOTIFY_GROUP_ID", "") or "")
 _GROUP_URL_DEFAULT = str(os.environ.get("AUTO_NOTIFY_GROUP_URL", "") or "")
+# Second CTA on every upload notification: always points at the public update
+# channel. Kept configurable so an admin can point it elsewhere if needed.
+_CHANNEL_URL_DEFAULT = str(
+    os.environ.get("CHNL_LNK", "https://t.me/rkmovieszip") or "https://t.me/rkmovieszip"
+)
 BOT_TIMEZONE = os.environ.get("TIMEZONE", "Asia/Kolkata") or "Asia/Kolkata"
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
@@ -94,6 +110,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "group_enabled": bool(_GROUP_DEFAULT),
     "button_text": "GET NOW",
     "button_url": _GROUP_URL_DEFAULT,
+    # Two-button upload notification: GET FILE (resolved file/group link) and
+    # UPDATE CHANNEL (public channel). The legacy single-button keys above are
+    # kept for backwards compatibility and direct deliveries.
+    "primary_button_text": "GET FILE",
+    "channel_button_text": "UPDATE CHANNEL",
+    "channel_button_url": _CHANNEL_URL_DEFAULT,
     "movie_button_url": "",
     "series_button_url": "",
     "movie_caption_template": DEFAULT_MOVIE_TEMPLATE,
@@ -980,11 +1002,23 @@ def build_payload(
         bool(clean_metadata_value((metadata or {}).get("poster"))),
         bool(clean_metadata_value(settings.get("fallback_poster"))),
     )
+    primary_url = _resolve_button_url(settings, kind, bot)
+    primary_label = normalize_button_text(settings.get("primary_button_text"), "GET FILE")
+    channel_url = str(settings.get("channel_button_url") or _CHANNEL_URL_DEFAULT).strip()
+    channel_label = normalize_button_text(
+        settings.get("channel_button_text"), "UPDATE CHANNEL"
+    )
+    buttons: List[Dict[str, str]] = []
+    if validate_button_url(primary_url):
+        buttons.append({"text": primary_label, "url": str(primary_url).strip()})
+    if validate_button_url(channel_url):
+        buttons.append({"text": channel_label, "url": channel_url})
     return {
         "owner_id": owner_id,
         "kind": kind,
         "captions": [caption for caption in captions if caption],
         "poster": poster,
+        "buttons": buttons,
         "button_text": normalize_button_text(settings.get("button_text"), "GET NOW"),
         "button_url": _resolve_button_url(settings, kind, bot),
         "created_at": _now(),
@@ -1225,13 +1259,27 @@ def _resolve_window(settings: Dict[str, Any], kind: str) -> Tuple[int, int]:
     """
     quiet_key = f"{kind}_quiet_window_seconds"
     max_key = f"{kind}_max_wait_seconds"
-    # Only use the new key if it was explicitly set (not just from defaults).
+    quiet_default = DEFAULT_SETTINGS.get(quiet_key)
+    legacy_key = "batch_window_seconds"
+    legacy_default = DEFAULT_SETTINGS.get(legacy_key)
     quiet_raw = settings.get(quiet_key)
-    if quiet_raw == DEFAULT_SETTINGS.get(quiet_key):
-        # Not explicitly set: fall back to legacy batch_window_seconds.
-        quiet_raw = settings.get("batch_window_seconds", DEFAULT_QUIET_WINDOW)
+    legacy_raw = settings.get(legacy_key)
+    # A value counts as "explicitly configured" only when it differs from its
+    # own default. The previous check compared the value to the default and
+    # always matched (both 60), so the legacy 300s window silently won and the
+    # new responsive window never applied.
+    if quiet_raw is not None and quiet_raw != quiet_default:
+        quiet_source = quiet_raw
+    elif legacy_raw is not None and legacy_raw != legacy_default:
+        quiet_source = legacy_raw
+    elif quiet_raw is not None:
+        quiet_source = quiet_raw
+    elif legacy_raw is not None:
+        quiet_source = legacy_raw
+    else:
+        quiet_source = DEFAULT_QUIET_WINDOW
     try:
-        quiet = int(quiet_raw)
+        quiet = int(quiet_source)
     except (TypeError, ValueError):
         quiet = DEFAULT_QUIET_WINDOW
     try:
@@ -1444,6 +1492,7 @@ async def _create_deliveries(
                 "chat_id": str(chat_ref),
                 "caption": caption,
                 "poster": payload.get("poster") or "",
+                "buttons": payload.get("buttons") or [],
                 "button_text": payload.get("button_text") or "GET NOW",
                 "button_url": payload.get("button_url") or "",
                 "status": "PENDING",
@@ -1703,10 +1752,12 @@ async def _edit_existing_deliveries(
         caption = captions[0]
         markup = _build_markup(
             {
+                "buttons": payload.get("buttons") or [],
                 "button_url": payload.get("button_url"),
                 "button_text": payload.get("button_text"),
             }
         )
+        edited = False
         try:
             await bot.edit_message_caption(
                 chat_id=chat_ref,
@@ -1715,39 +1766,67 @@ async def _edit_existing_deliveries(
                 parse_mode=enums.ParseMode.HTML,
                 reply_markup=markup,
             )
-            await handle[DELIVERIES_COLLECTION].update_one(
-                {
-                    "owner_id": batch["batch_id"],
-                    "destination_type": destination,
-                },
-                {
-                    "$set": {
-                        "caption": caption,
-                        "revision": revision,
-                        "status": "SENT",
-                        "updated_at": _now(),
-                    }
-                },
-            )
-            updated.append(destination)
+            edited = True
         except MessageNotModified:
-            updated.append(destination)
+            edited = True
         except Exception as exc:
-            category = classify_telegram_error(exc)
-            logger.warning(
-                "Feature 46 live edit failed (%s/%s, %s): %s",
-                batch.get("batch_id"),
-                destination,
-                category,
-                safe_error_text(exc),
-            )
-            if category == "permanent":
-                # Message is gone or not editable: drop the stale id so the
-                # fallback path records a new one instead of retrying forever.
-                message_ids.pop(destination, None)
-                await handle[BATCHES_COLLECTION].update_one(
-                    {"_id": batch["_id"]}, {"$set": {"message_ids": message_ids}}
+            if classify_telegram_error(exc) == "flood":
+                logger.warning(
+                    "Feature 46 live edit flood-limited (%s/%s): %s",
+                    batch.get("batch_id"),
+                    destination,
+                    safe_error_text(exc),
                 )
+                continue
+            # The original notification may have been delivered as text (the
+            # poster failed, which must never block delivery), so a caption
+            # edit is impossible. Fall back to editing the text in place.
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_ref,
+                    message_id=int(message_id),
+                    text=caption,
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=markup,
+                    disable_web_page_preview=True,
+                )
+                edited = True
+            except MessageNotModified:
+                edited = True
+            except Exception as text_exc:
+                category = classify_telegram_error(text_exc)
+                logger.warning(
+                    "Feature 46 live edit failed (%s/%s, %s): %s",
+                    batch.get("batch_id"),
+                    destination,
+                    category,
+                    safe_error_text(text_exc),
+                )
+                if category == "permanent":
+                    # Message is gone or not editable: drop the stale id so the
+                    # fallback path records a new one instead of retrying forever.
+                    message_ids.pop(destination, None)
+                    await handle[BATCHES_COLLECTION].update_one(
+                        {"_id": batch["_id"]}, {"$set": {"message_ids": message_ids}}
+                    )
+        if not edited:
+            continue
+        await handle[DELIVERIES_COLLECTION].update_one(
+            {
+                "owner_id": batch["batch_id"],
+                "destination_type": destination,
+            },
+            {
+                "$set": {
+                    "caption": caption,
+                    "buttons": payload.get("buttons") or [],
+                    "revision": revision,
+                    "status": "SENT",
+                    "updated_at": _now(),
+                }
+            },
+        )
+        updated.append(destination)
     return updated
 
 
@@ -1755,6 +1834,23 @@ def _build_markup(delivery: Dict[str, Any]):
     try:
         from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+        # Two-button notifications carry an explicit ``buttons`` list. Each
+        # entry is validated independently so a bad second URL never removes
+        # the primary CTA.
+        row: List[Any] = []
+        for item in delivery.get("buttons") or []:
+            if not isinstance(item, dict):
+                continue
+            url = item.get("url") or ""
+            if not validate_button_url(url):
+                continue
+            label = normalize_button_text(item.get("text"), "")
+            if not label:
+                continue
+            row.append(InlineKeyboardButton(label, url=str(url).strip()))
+        if row:
+            return InlineKeyboardMarkup([row])
+        # Legacy single-button delivery (digest, direct deliveries, old rows).
         url = delivery.get("button_url") or ""
         if not validate_button_url(url):
             return None
@@ -2312,13 +2408,18 @@ async def send_test_notification(bot, fallback_chat_id: int) -> List[Tuple[str, 
     from pyrogram import enums
     from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-    label = normalize_button_text(settings.get("button_text"), "GET NOW")
-    url = _resolve_button_url(settings, "movie", bot)
-    markup = (
-        InlineKeyboardMarkup([[InlineKeyboardButton(label, url=url)]])
-        if validate_button_url(url)
-        else None
+    primary_label = normalize_button_text(settings.get("primary_button_text"), "GET FILE")
+    primary_url = _resolve_button_url(settings, "movie", bot)
+    channel_label = normalize_button_text(
+        settings.get("channel_button_text"), "UPDATE CHANNEL"
     )
+    channel_url = str(settings.get("channel_button_url") or _CHANNEL_URL_DEFAULT).strip()
+    row = []
+    if validate_button_url(primary_url):
+        row.append(InlineKeyboardButton(primary_label, url=str(primary_url).strip()))
+    if validate_button_url(channel_url):
+        row.append(InlineKeyboardButton(channel_label, url=channel_url))
+    markup = InlineKeyboardMarkup([row]) if row else None
     text = "<b>🔔 TEST NOTIFICATION</b>\n\nFeature 46 auto upload notifications are configured."
     results: List[Tuple[str, bool, str]] = []
     targets = []
@@ -2548,5 +2649,8 @@ async def reset_templates(admin_id: Optional[int] = None) -> None:
         series_caption_template=DEFAULT_SERIES_TEMPLATE,
         digest_caption_template=DEFAULT_DIGEST_TEMPLATE,
         button_text="GET NOW",
+        primary_button_text="GET FILE",
+        channel_button_text="UPDATE CHANNEL",
+        channel_button_url=_CHANNEL_URL_DEFAULT,
         digest_button_text="VIEW ALL UPLOADS",
     )

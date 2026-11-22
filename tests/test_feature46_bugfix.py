@@ -750,9 +750,11 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(photo["photo"], FULL_MOVIE_NODE["primaryImage"]["url"])
             self.assertIn("Kongsi (2011)", photo["caption"])
             self.assertIsNotNone(photo["reply_markup"])
-            button = photo["reply_markup"].inline_keyboard[0][0]
-            self.assertEqual(button.text, "GET NOW")
-            self.assertEqual(button.url, "https://t.me/examplegroup")
+            row = photo["reply_markup"].inline_keyboard[0]
+            self.assertEqual(row[0].text, "GET FILE")
+            self.assertEqual(row[0].url, "https://t.me/examplegroup")
+            self.assertEqual(row[1].text, "UPDATE CHANNEL")
+            self.assertEqual(row[1].url, "https://t.me/rkmovieszip")
 
     async def test_channel_failure_does_not_block_group(self):
         bot = FakeBot(failing_photos={"-100111"})
