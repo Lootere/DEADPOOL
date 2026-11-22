@@ -335,16 +335,19 @@ class MetadataProviderTests(unittest.TestCase):
         metadata = imdb.metadata_from_node(FULL_MOVIE_NODE)
         caption = engine.build_movie_caption(event, metadata, engine.DEFAULT_SETTINGS)
         for expected in (
-            "NEW MOVIE DROP",
+            "🔥 NEW MOVIE DROP",
             "Kongsi (2011)",
-            "⭐ IMDb: 5.2/10",
+            "⭐ <b>IMDb: 5.2/10</b>",
             "🆔 IMDb: tt1932660",
-            "🎭 Genre: Action, Comedy",
-            "🌐 Language: Hindi",  # event language is kept when present
-            "🎞️ <b>AVAILABLE QUALITIES:</b>",
+            "<u>🎭 GENRE</u>",
+            "Action • Comedy",
+            "<u>🌍 LANGUAGE</u>",
+            "Malay",
+            "<u>🎞️ AVAILABLE QUALITY</u>",
             "720p",
-            "⏱️ Runtime: 1h 30m",
-            "THE STORY",
+            "<u>⏱️ RUNTIME</u>",
+            "1h 30m",
+            "<u>🍿 THE STORY</u>",
             "secret societies",
         ):
             self.assertIn(expected, caption)
@@ -427,16 +430,17 @@ class MetadataProviderTests(unittest.TestCase):
         captions = engine.build_series_captions(events, metadata, engine.DEFAULT_SETTINGS)
         text = "\n".join(captions)
         for expected in (
-            "NEW SERIES EPISODES DROP",
-            "Akka (2026) — Season 1",
-            "⭐ IMDb: 7.4/10",
-            "🎭 Genre: Crime, Drama",
+            "🚀 NEW SERIES DROP",
+            "Akka (2026)",
+            "⭐ <b>IMDb: 7.4/10</b>",
+            "<u>🎭 GENRE</u>",
+            "Crime • Drama",
             "ABOUT THE SERIES",
-            "TOTAL NEW EPISODES: 3",
+            "Episodes Available: 3",
         ):
             self.assertIn(expected, text)
         for episode in range(1, 4):
-            self.assertIn(f"E{episode:02d} S01", text)
+            self.assertIn(f"E{episode:02d}", text)
 
     def test_provider_timeout_is_reported(self):
         original = imdb._http_json
@@ -750,11 +754,12 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(photo["photo"], FULL_MOVIE_NODE["primaryImage"]["url"])
             self.assertIn("Kongsi (2011)", photo["caption"])
             self.assertIsNotNone(photo["reply_markup"])
-            row = photo["reply_markup"].inline_keyboard[0]
-            self.assertEqual(row[0].text, "GET FILE")
-            self.assertEqual(row[0].url, "https://t.me/examplegroup")
-            self.assertEqual(row[1].text, "UPDATE CHANNEL")
-            self.assertEqual(row[1].url, "https://t.me/rkmovieszip")
+            rows = photo["reply_markup"].inline_keyboard
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0][0].text, "GET FILE")
+            self.assertEqual(rows[0][0].url, "https://t.me/examplegroup")
+            self.assertEqual(rows[1][0].text, "UPDATE CHANNEL")
+            self.assertEqual(rows[1][0].url, "https://t.me/rkmovieszip")
 
     async def test_channel_failure_does_not_block_group(self):
         bot = FakeBot(failing_photos={"-100111"})

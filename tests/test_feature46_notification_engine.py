@@ -98,13 +98,16 @@ class CaptionTests(unittest.TestCase):
         event = engine.build_event(FakeMedia("Example.Movie.2025.1080p.Hindi.mkv"))
         caption = engine.build_movie_caption(event, self.full_metadata(), engine.DEFAULT_SETTINGS)
         for value in (
-            "NEW MOVIE DROP",
+            "🔥 NEW MOVIE DROP",
             "Example Movie (2025)",
-            "7.8/10",
-            "Action, Thriller",
+            "⭐ <b>IMDb: 7.8/10</b>",
+            "<u>🎭 GENRE</u>",
+"Action • Thriller",
+            "<u>🌍 LANGUAGE</u>",
             "Hindi",
+            "<u>🎞️ AVAILABLE QUALITY</u>",
             "1080p",
-            "A short and informative movie description.",
+            "<u>🍿 THE STORY</u>",
             "tt1234567",
         ):
             self.assertIn(value, caption)
@@ -136,11 +139,11 @@ class CaptionTests(unittest.TestCase):
         ]
         captions = engine.build_series_captions(events, {}, engine.DEFAULT_SETTINGS)
         text = "\n".join(captions)
-        self.assertIn("NEW SERIES EPISODES DROP", text)
+        self.assertIn("🚀 NEW SERIES DROP", text)
         self.assertIn("Akka", text)
         for index in range(1, 6):
-            self.assertIn(f"E{index:02d} S01", text)
-        self.assertIn("TOTAL NEW EPISODES: 5", text)
+            self.assertIn(f"E{index:02d}", text)
+        self.assertIn("Episodes Available: 5", text)
         self.assertIn("1080p", text)
         self.assertIn("720p", text)
 
@@ -166,7 +169,7 @@ class CaptionTests(unittest.TestCase):
         found = set()
         for caption in captions:
             self.assertLessEqual(len(caption), 4096)
-            found.update(re.findall(r"E\d{2,3} S01", caption))
+            found.update(re.findall(r"E\d{2,3}(?= •|$|\n)", caption))
         self.assertEqual(len(found), 120)
         self.assertIn("Part 1/", captions[0])
 
@@ -994,7 +997,7 @@ class SeriesGroupingTests(unittest.IsolatedAsyncioTestCase):
         caption = bot.messages[0]["text"]
         for ep in range(1, 9):
             self.assertIn(f"E{ep:02d}", caption, f"Missing episode E{ep:02d}")
-        self.assertIn("TOTAL NEW EPISODES: 8", caption)
+        self.assertIn("Episodes Available: 8", caption)
 
     async def test_episode_quality_variants(self):
         bot = FakeBot()
