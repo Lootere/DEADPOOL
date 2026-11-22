@@ -357,6 +357,32 @@ async def del_vip_plan_cmd(client, message):
     await message.reply_text(msg)
 
 
+@Client.on_message(filters.command("vip_prices") & filters.user(ADMINS))
+async def vip_prices_cmd(client, message):
+    from Lootere.utils.subscription_manager import subscription_manager
+    plans = subscription_manager.dest_mgr.list_plans()
+    destinations = subscription_manager.dest_mgr._destinations
+    if not plans:
+        return await message.reply_text("No VIP plans configured. Use /vip_plan_add.")
+    lines = ["<b>VIP PLAN PRICE MANAGER</b>\n"]
+    for p in plans:
+        lines.append(
+            f"• <b>{p.get('name')}</b>: <code>{p.get('price')}</code> / <code>{p.get('duration_days')} Days</code>"
+        )
+    dest_ids = []
+    for p in plans:
+        for d in p.get("destinations", []):
+            if d not in dest_ids:
+                dest_ids.append(d)
+    dest_names = [
+        destinations.get(d, {}).get("name", "VIP Destination") for d in dest_ids
+    ]
+    lines.append("\nIncluded destinations:")
+    for dn in dest_names:
+        lines.append(f"- {dn}")
+    await message.reply_text("\n".join(lines))
+
+
 @Client.on_message(filters.command("vip_set_price") & filters.user(ADMINS))
 async def set_vip_price_cmd(client, message):
     from Lootere.utils.subscription_manager import subscription_manager
@@ -370,8 +396,50 @@ async def set_vip_price_cmd(client, message):
     price = message.command[2].strip()
     if not price:
         return await message.reply_text("Price cannot be empty.")
+
+    # Validate plan exists
+    plan = subscription_manager.dest_mgr.get_plan(plan_id)
+    if not plan:
+        return await message.reply_text(f"Plan '{plan_id}' not found. Check /vip_plan_list.")
+
+    old_price = plan.get("price", "N/A")
+
+    # Validate price: reject negative, zero, or malformed amounts
+    import re as _re
+    price_clean = price.strip()
+    if price_clean.startswith("-"):
+        return await message.reply_text("Price must be greater than zero.")
+    price_digits = _re.sub(r"[^\d.]", "", price_clean)
+    if not price_digits:
+        return await message.reply_text("Invalid price. Amount must contain a numeric value.")
+    try:
+        price_val = float(price_digits)
+    except ValueError:
+        return await message.reply_text("Invalid price. Could not parse amount.")
+    if price_val <= 0:
+        return await message.reply_text("Price must be greater than zero.")
+
     success, msg = await subscription_manager.dest_mgr.set_plan_price(plan_id, price)
-    await message.reply_text(msg)
+    if success:
+        # Log price change
+        try:
+            logger.info(
+                f"VIP price changed by admin {message.from_user.id}: "
+                f"plan={plan_id} old={old_price} new={price}"
+            )
+        except Exception:
+            pass
+        await message.reply_text(
+            f"<b>✅ VIP Price Updated</b>\n\n"
+            f"• <b>Plan:</b> {plan.get('name')}\n"
+            f"• <b>Old Price:</b> <code>{old_price}</code>\n"
+            f"• <b>New Price:</b> <code>{price}</code>\n"
+            f"• <b>Duration:</b> <code>{plan.get('duration_days')} Days</code>\n\n"
+            f"New purchases will use the updated price. "
+            f"Pending payments retain their original price snapshot."
+        )
+    else:
+        await message.reply_text(msg)
 
 
 @Client.on_message(filters.command("vip_add") & filters.user(ADMINS))

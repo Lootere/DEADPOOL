@@ -281,6 +281,22 @@ class DestinationManager:
             return False, f"Plan '{plan_id}' not found."
         if not price or not price.strip():
             return False, "Price cannot be empty."
+
+        # Validate price: reject negative, zero, or malformed amounts
+        import re as _re
+        price_clean = price.strip()
+        if price_clean.startswith("-"):
+            return False, "Price must be greater than zero."
+        price_digits = _re.sub(r"[^\d.]", "", price_clean)
+        if not price_digits:
+            return False, "Invalid price. Amount must contain a numeric value."
+        try:
+            price_val = float(price_digits)
+        except ValueError:
+            return False, "Invalid price. Could not parse amount."
+        if price_val <= 0:
+            return False, "Price must be greater than zero."
+
         self._plans[plan_id]["price"] = price.strip()
         self._plans[plan_id]["updated_at"] = datetime.now(IST)
         if self.db is not None:
@@ -815,22 +831,40 @@ def format_dest_plans_text(plans: List[dict], destinations: Dict[str, dict]) -> 
     return "\n".join(lines)
 
 
-def build_dest_plans_keyboard(owner_username: str = "Looteredev"):
-    """Build destination plans keyboard with Feature 44 Premium Typography and ZERO colour emojis."""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("♛ 『 𝐒𝐄𝐋𝐄𝐂𝐓 𝐕𝐈𝐏 𝐏𝐋𝐀𝐍 』", callback_data="pay_plan_choose#vip"),
-            InlineKeyboardButton("⇩ 『 𝐔𝐏𝐋𝐎𝐀𝐃 𝐏𝐑𝐎𝐎𝐅 』", callback_data="pay_upload_prompt"),
-        ],
-        [
-            InlineKeyboardButton("✦ 𝐌𝐘 𝐈𝐍𝐕𝐈𝐓𝐄 𝐋𝐈𝐍𝐊𝐒 ✦", callback_data="dest_invites"),
-            InlineKeyboardButton("◈ 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐀𝐃𝐌𝐈𝐍 ◈", url=f"https://t.me/{owner_username}"),
-        ],
-        [
-            InlineKeyboardButton("♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』", callback_data="premium_hub"),
-            InlineKeyboardButton("◁ 𝐁𝐀𝐂𝐊 𝐓𝐎 𝐇𝐎𝐌𝐄", callback_data="start"),
-        ],
+def build_dest_plans_keyboard(plans: Optional[List[dict]] = None, owner_username: str = "Looteredev"):
+    """Build destination plans keyboard with direct per-plan purchase buttons.
+
+    Each plan gets its own BUY button that goes straight to payment selection,
+    removing the extra SELECT VIP PLAN step from the purchase journey.
+    """
+    if plans is None:
+        plans = []
+    buttons: List[List[InlineKeyboardButton]] = []
+    for plan in plans:
+        if not DestinationManager._is_valid_plan(plan):
+            continue
+        pid = plan.get("id", "vip")
+        pname = plan.get("name", pid.title())
+        price = plan.get("price", "Contact Admin")
+        days = plan.get("duration_days", 30)
+        buttons.append([
+            InlineKeyboardButton(
+                f"♛ 『 𝐁𝐔𝐘 {pname.upper()} — {price} 』",
+                callback_data=f"pay_sel#group_premium#{pid}#{days}#{price}",
+            )
+        ])
+    buttons.append([
+        InlineKeyboardButton("⇩ 『 𝐔𝐏𝐋𝐎𝐀𝐃 𝐏𝐑𝐎𝐎𝐅 』", callback_data="pay_upload_prompt"),
     ])
+    buttons.append([
+        InlineKeyboardButton("✦ 𝐌𝐘 𝐈𝐍𝐕𝐈𝐓𝐄 𝐋𝐈𝐍𝐊𝐒 ✦", callback_data="dest_invites"),
+        InlineKeyboardButton("◈ 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐀𝐃𝐌𝐈𝐍 ◈", url=f"https://t.me/{owner_username}"),
+    ])
+    buttons.append([
+        InlineKeyboardButton("♛ 『 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐇𝐔𝐁 』", callback_data="premium_hub"),
+        InlineKeyboardButton("◁ 𝐁𝐀𝐂𝐊 𝐓𝐎 𝐇𝐎𝐌𝐄", callback_data="start"),
+    ])
+    return InlineKeyboardMarkup(buttons)
 
 
 def format_my_plans_text(bot_plan: Optional[dict], dest_sub: Optional[dict], destinations: Dict[str, dict]) -> str:

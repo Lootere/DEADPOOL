@@ -215,11 +215,11 @@ class TestFeature44ButtonTypography(unittest.TestCase):
         self.assertEqual(labels[3], "༺ 💎 𝐌𝐘 𝐀𝐂𝐓𝐈𝐕𝐄 𝐏𝐋𝐀𝐍𝐒 ༻")
         self.assertEqual(labels[4], "◁ 𝐁𝐀𝐂𝐊 𝐓𝐎 𝐇𝐎𝐌𝐄")
 
-        plans_kb = build_dest_plans_keyboard("Looteredev")
+        plans_kb = build_dest_plans_keyboard([], owner_username="Looteredev")
         plan_callbacks = [btn.callback_data for row in plans_kb.inline_keyboard for btn in row if btn.callback_data]
         self.assertEqual(
             plan_callbacks,
-            ["pay_plan_choose#vip", "pay_upload_prompt", "dest_invites", "premium_hub", "start"],
+            ["pay_upload_prompt", "dest_invites", "premium_hub", "start"],
         )
 
         my_plans_kb = build_my_plans_keyboard(has_dest_sub=True)

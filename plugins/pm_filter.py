@@ -1941,7 +1941,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         plans = subscription_manager.dest_mgr.list_plans()
         destinations = subscription_manager.dest_mgr._destinations
         text = format_dest_plans_text(plans, destinations)
-        reply_markup = build_dest_plans_keyboard(owner_username=OWNER_USER_NAME)
+        reply_markup = build_dest_plans_keyboard(plans, owner_username=OWNER_USER_NAME)
         await _edit_help_page(client, query, text, reply_markup)
         await query.answer()
 
