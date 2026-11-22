@@ -52,32 +52,34 @@ DIGESTS_COLLECTION = "weekly_digest_history"
 AUDIT_COLLECTION = "notification_audit_log"
 MOVIE_QUALITY_BATCHES_COLLECTION = "movie_quality_batches"
 
-# Style 7 "OTT Dark Cinematic" - a cinematic, full-bleed movie card. Telegram
-# has no colour support, so the dark OTT look is built from heavy dividers,
-# tight spacing and a single call-to-action line.
+# Style 7 "OTT Dark Cinematic" - a cinematic movie card built only from
+# Telegram-native entities (bold, italic, underline, blockquote, spoiler).
+# Telegram has no colour support, so the "dark OTT" look comes from heavy
+# dividers, underlined section labels and a blockquoted story.
 DEFAULT_MOVIE_TEMPLATE = (
-    "<b>🎬 NEW MOVIE DROP</b>\n"
+    "<b>🔥 NEW MOVIE DROP</b>\n"
     "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
-    "<b>{title_line}</b>\n\n"
-    "{rating_line}{imdb_line}{genre_line}{language_line}{quality_line}"
-    "{runtime_line}{certification_line}{description_line}"
+    "<b>🎬 {title_line}</b>\n\n"
+    "{rating_line}{imdb_line}"
+    "{genre_block}{language_block}{quality_block}"
+    "{runtime_block}{certification_block}"
+    "{story_block}{spoiler_block}"
     "<b>━━━━━━━━━━━━━━━━━━</b>\n"
-    "<i>▶️ Tap GET FILE to watch now</i>"
+    "<i>POWERED BY RKMOVIESZIP</i>"
 )
 
-# Style 8 "Live Episode Tracker" - a running episode board: per-episode
-# qualities plus the live totals, updated in place as new episodes land.
+# Style 8 "Live Episode Tracker" - a running episode board with an underlined
+# season tracker, a one-line episode strip and a blockquoted live-update note.
 DEFAULT_SERIES_TEMPLATE = (
-    "<b>📺 NEW SERIES EPISODES DROP</b>\n"
+    "<b>🚀 NEW SERIES DROP</b>\n"
     "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
-    "<b>{title_line}</b>\n\n"
-    "{rating_line}{imdb_line}{genre_line}{language_line}{quality_line}"
-    "{runtime_line}{new_episodes_block}\n\n"
-    "<b>🎯 TOTAL NEW EPISODES: {episode_count}</b>\n"
-    "<b>📦 TOTAL FILE VERSIONS: {version_count}</b>\n"
-    "{description_line}"
+    "<b>🎬 {title_line}</b>\n\n"
+    "{rating_line}{imdb_line}"
+    "{genre_block}{language_block}{quality_block}{runtime_block}"
+    "{tracker_block}"
+    "{story_block}"
     "<b>━━━━━━━━━━━━━━━━━━</b>\n"
-    "<i>🔴 Live tracker updated — tap GET FILE to watch</i>"
+    "<i>POWERED BY RKMOVIESZIP</i>"
 )
 
 DEFAULT_DIGEST_TEMPLATE = (
@@ -780,6 +782,66 @@ def _merge_qualities(event: Dict[str, Any], events: Sequence[Dict[str, Any]]) ->
     return " • ".join(ordered)
 
 
+def _split_terms(value: Any) -> List[str]:
+    """Split a comma/pipe/slash separated metadata value into clean terms."""
+    text = clean_metadata_value(value)
+    if not text:
+        return []
+    terms: List[str] = []
+    for raw in re.split(r"[,/|]+", text):
+        term = clean_metadata_value(raw).strip(" -–—•")
+        if term and term not in terms:
+            terms.append(term)
+    return terms
+
+
+def _join_bullets(value: Any) -> str:
+    """Render terms as ``A • B • C`` with duplicates and empties removed."""
+    return " • ".join(_split_terms(value))
+
+
+def _language_display(event: Dict[str, Any], metadata: Dict[str, Any]) -> str:
+    """All known languages as ``A • B``; provider languages win over filename."""
+    metadata_languages = _join_bullets(metadata.get("languages"))
+    if metadata_languages:
+        return metadata_languages
+    return _join_bullets(event.get("language"))
+
+
+def _label_block(label: str, value: str, quote: bool = False) -> str:
+    """Underlined section label followed by its value (and a blank line).
+
+    Returns an empty string when there is no value, so an unavailable field is
+    omitted cleanly instead of leaving an orphan heading.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    body = f"<blockquote><i>{text}</i></blockquote>" if quote else text
+    return f"<u>{label}</u>\n{body}\n\n"
+
+
+def episode_display_label(code: Any) -> str:
+    """Compact episode label for the tracker strip (``E01 S01`` -> ``E01``)."""
+    text = clean_metadata_value(code)
+    if not text:
+        return ""
+    match = re.search(r"E\s*(\d{1,4})", text, re.IGNORECASE)
+    if match:
+        return f"E{int(match.group(1)):02d}"
+    return text
+
+
+def episode_strip(codes: Sequence[str]) -> str:
+    """One-line episode list, e.g. ``E01 • E02 • E03``."""
+    labels: List[str] = []
+    for code in codes:
+        label = episode_display_label(code)
+        if label and label not in labels:
+            labels.append(label)
+    return " • ".join(labels)
+
+
 def build_movie_caption(
     event: Dict[str, Any],
     metadata: Optional[Dict[str, Any]],
@@ -811,26 +873,50 @@ def build_movie_caption(
     )
 
     title_line = escape_text(title) + (f" ({escape_text(year)})" if year else "")
+    genre_text = _join_bullets(genre)
+    language_text = _language_display(event, metadata)
+    quality_text = _join_bullets(quality)
+    spoiler = _truncate_text(clean_metadata_value(metadata.get("spoiler")), 400)
     values = {
         "title": escape_text(title),
         "title_line": title_line,
         "year": escape_text(year),
         "rating": escape_text(rating),
         "imdb_id": escape_text(imdb_id),
-        "genre": escape_text(genre),
-        "language": escape_text(language),
-        "quality": escape_text(quality),
+        "genre": escape_text(genre_text),
+        "language": escape_text(language_text),
+        "quality": escape_text(quality_text),
         "runtime": escape_text(runtime),
         "certification": escape_text(certification),
         "description": escape_text(description),
         "size": clean_metadata_value(event.get("file_size")),
         "version_count": str(version_count),
-        "rating_line": f"⭐ IMDb: {escape_text(rating)}/10\n" if rating else "",
-        "imdb_line": f"🆔 IMDb: {escape_text(imdb_id)}\n" if imdb_id else "",
-        "genre_line": f"🎭 Genre: {escape_text(genre)}\n" if genre else "",
-        "language_line": f"🌐 Language: {escape_text(language)}\n" if language else "",
+        "rating_line": f"⭐ <b>IMDb: {escape_text(rating)}/10</b>\n\n" if rating else "",
+        "imdb_line": f"🆔 IMDb: {escape_text(imdb_id)}\n\n" if imdb_id else "",
+        # Telegram-native styled blocks (empty when the field is unavailable).
+        "genre_block": _label_block("🎭 GENRE", escape_text(genre_text)),
+        "language_block": _label_block("🌍 LANGUAGE", escape_text(language_text)),
+        "quality_block": _label_block("🎞️ AVAILABLE QUALITY", escape_text(quality_text)),
+        "runtime_block": _label_block("⏱️ RUNTIME", escape_text(runtime)),
+        "certification_block": _label_block(
+            "🔞 CERTIFICATION", escape_text(certification)
+        ),
+        "story_block": _label_block("🍿 THE STORY", escape_text(description), quote=True),
+        "spoiler_block": (
+            "<u>🔐 SPOILER CONTENT</u>\n"
+            f"<blockquote><spoiler>{escape_text(spoiler)}</spoiler></blockquote>\n\n"
+            if spoiler
+            else ""
+        ),
+        # Legacy tokens kept for admin-authored custom templates.
+        "genre_line": f"🎭 Genre: {escape_text(genre_text)}\n" if genre_text else "",
+        "language_line": (
+            f"🌐 Language: {escape_text(language_text)}\n" if language_text else ""
+        ),
         "quality_line": (
-            f"🎞️ <b>AVAILABLE QUALITIES:</b>\n{escape_text(quality)}\n" if quality else ""
+            f"🎞️ <b>AVAILABLE QUALITIES:</b>\n{escape_text(quality_text)}\n"
+            if quality_text
+            else ""
         ),
         "runtime_line": f"⏱️ Runtime: {escape_text(runtime)}\n" if runtime else "",
         "certification_line": (
@@ -897,8 +983,6 @@ def build_series_captions(
     title_line = escape_text(title)
     if year:
         title_line += f" ({escape_text(year)})"
-    if season is not None:
-        title_line += f" — Season {int(season)}"
 
     def _episode_line(code: str) -> str:
         line = f"{escape_text(code)}"
@@ -907,31 +991,60 @@ def build_series_captions(
             line += " — " + escape_text(", ".join(items))
         return f"• {line}"
 
+    season_label = (
+        f"SEASON {int(season):02d}" if season is not None else "LIVE EPISODE"
+    )
+    genre_text = _join_bullets(genre)
+    language_text = _language_display(first, metadata)
+    quality_text = _join_bullets(quality_text)
     chunks = chunk_episodes(ordered_codes)
     captions: List[str] = []
     for chunk in chunks:
         block_lines = ["<b>📦 NEW EPISODES:</b>"] + [_episode_line(code) for code in chunk]
+        strip = episode_strip(chunk)
+        tracker_block = (
+            f"<u>📺 {season_label} — LIVE TRACKER</u>\n\n"
+            f"<b>Episodes Available: {total_episodes}</b>\n\n"
+            f"{escape_text(strip)}\n\n"
+            "<blockquote><i>New episodes and quality updates will appear "
+            "in this same notification.</i></blockquote>\n\n"
+            if strip
+            else ""
+        )
         values = {
             "title": escape_text(title),
             "title_line": title_line,
             "year": escape_text(year),
             "rating": escape_text(rating),
             "imdb_id": escape_text(imdb_id),
-            "genre": escape_text(genre),
-            "language": escape_text(language),
+            "genre": escape_text(genre_text),
+            "language": escape_text(language_text),
             "quality": escape_text(quality_text),
             "qualities": escape_text(quality_text),
             "season": "" if season is None else str(int(season)),
             "episode_list": "\n".join(_episode_line(code) for code in chunk),
+            "episode_strip": escape_text(strip),
+            "episodes_available": str(total_episodes),
             "new_episodes_block": "\n".join(block_lines),
+            "tracker_block": tracker_block,
             "episode_count": str(total_episodes),
             "version_count": str(total_versions),
             "runtime": escape_text(runtime),
             "description": escape_text(description),
-            "rating_line": f"⭐ IMDb: {escape_text(rating)}/10\n" if rating else "",
-            "imdb_line": f"🆔 IMDb: {escape_text(imdb_id)}\n" if imdb_id else "",
-            "genre_line": f"🎭 Genre: {escape_text(genre)}\n" if genre else "",
-            "language_line": f"🌐 Language: {escape_text(language)}\n" if language else "",
+            "rating_line": f"⭐ <b>IMDb: {escape_text(rating)}/10</b>\n\n" if rating else "",
+            "imdb_line": f"🆔 IMDb: {escape_text(imdb_id)}\n\n" if imdb_id else "",
+            "genre_block": _label_block("🎭 GENRE", escape_text(genre_text)),
+            "language_block": _label_block("🌐 AUDIO", escape_text(language_text)),
+            "quality_block": _label_block("🎞️ AVAILABLE QUALITY", escape_text(quality_text)),
+            "runtime_block": _label_block("⏱️ RUNTIME", escape_text(runtime)),
+            "story_block": _label_block(
+                "🍿 ABOUT THE SERIES", escape_text(description), quote=True
+            ),
+            # Legacy tokens kept for admin-authored custom templates.
+            "genre_line": f"🎭 Genre: {escape_text(genre_text)}\n" if genre_text else "",
+            "language_line": (
+                f"🌐 Language: {escape_text(language_text)}\n" if language_text else ""
+            ),
             "quality_line": (
                 f"🎞️ <b>AVAILABLE QUALITIES:</b>\n{escape_text(quality_text)}\n"
                 if quality_text
@@ -1835,9 +1948,9 @@ def _build_markup(delivery: Dict[str, Any]):
         from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
         # Two-button notifications carry an explicit ``buttons`` list. Each
-        # entry is validated independently so a bad second URL never removes
-        # the primary CTA.
-        row: List[Any] = []
+        # button is placed on its own row (vertical layout) and validated
+        # independently so a bad second URL never removes the primary CTA.
+        rows: List[List[Any]] = []
         for item in delivery.get("buttons") or []:
             if not isinstance(item, dict):
                 continue
@@ -1847,9 +1960,9 @@ def _build_markup(delivery: Dict[str, Any]):
             label = normalize_button_text(item.get("text"), "")
             if not label:
                 continue
-            row.append(InlineKeyboardButton(label, url=str(url).strip()))
-        if row:
-            return InlineKeyboardMarkup([row])
+            rows.append([InlineKeyboardButton(label, url=str(url).strip())])
+        if rows:
+            return InlineKeyboardMarkup(rows)
         # Legacy single-button delivery (digest, direct deliveries, old rows).
         url = delivery.get("button_url") or ""
         if not validate_button_url(url):
@@ -2414,12 +2527,12 @@ async def send_test_notification(bot, fallback_chat_id: int) -> List[Tuple[str, 
         settings.get("channel_button_text"), "UPDATE CHANNEL"
     )
     channel_url = str(settings.get("channel_button_url") or _CHANNEL_URL_DEFAULT).strip()
-    row = []
+    rows = []
     if validate_button_url(primary_url):
-        row.append(InlineKeyboardButton(primary_label, url=str(primary_url).strip()))
+        rows.append([InlineKeyboardButton(primary_label, url=str(primary_url).strip())])
     if validate_button_url(channel_url):
-        row.append(InlineKeyboardButton(channel_label, url=channel_url))
-    markup = InlineKeyboardMarkup([row]) if row else None
+        rows.append([InlineKeyboardButton(channel_label, url=channel_url)])
+    markup = InlineKeyboardMarkup(rows) if rows else None
     text = "<b>🔔 TEST NOTIFICATION</b>\n\nFeature 46 auto upload notifications are configured."
     results: List[Tuple[str, bool, str]] = []
     targets = []
