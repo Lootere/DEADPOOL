@@ -72,6 +72,7 @@ query Feature46Title($id: ID!) {
     runtime { seconds }
     spokenLanguages { spokenLanguages { text } }
     primaryImage { url }
+    backdrops { backdrops { url aspectRatio } }
     titleType { id text }
   }
 }
@@ -305,7 +306,24 @@ def metadata_from_node(node: Dict[str, Any]) -> Dict[str, Any]:
         )
         if _clean(language.get("text"))
     )
-    poster = _clean((node.get("primaryImage") or {}).get("url"))
+    # Prefer landscape/backdrop image (16:9 ~ 1.78) for notifications.
+    # Fallback to primaryImage (portrait) if no suitable backdrop exists.
+    poster = ""
+    backdrops = (node.get("backdrops") or {}).get("backdrops") or []
+    landscape_urls = []
+    for bd in backdrops:
+        url = _clean(bd.get("url"))
+        ar = bd.get("aspectRatio")
+        if url and url.startswith(("http://", "https://")):
+            try:
+                if ar is not None and float(ar) >= 1.5:
+                    landscape_urls.append(url)
+            except (TypeError, ValueError):
+                pass
+    if landscape_urls:
+        poster = landscape_urls[0]
+    else:
+        poster = _clean((node.get("primaryImage") or {}).get("url"))
     if poster and not poster.startswith(("http://", "https://")):
         poster = ""
     runtime = _format_runtime((node.get("runtime") or {}).get("seconds"))
